@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';
+import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:flutter_chess/widgets/widgets.dart';
 import 'package:provider/provider.dart';
@@ -18,8 +19,8 @@ class GameStartUpScreen extends StatefulWidget {
 }
 
 class _GameStartUpScreenState extends State<GameStartUpScreen> {
-  int whiteTimeInMinutes = 10; // Match GameProvider default
-  int blackTimeInMinutes = 10; // Match GameProvider default
+  int whiteTimeInMinutes = 10;
+  int blackTimeInMinutes = 10;
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +105,14 @@ class _GameStartUpScreenState extends State<GameStartUpScreen> {
                         onTap: () => gameProvider.setGameDifficulty(level: 3),
                       ),
                     ],
+                  ),
+                ] else ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Text(
+                      gameProvider.waitingText,
+                      style: const TextStyle(color: Colors.white70, fontSize: 16),
+                    ),
                   ),
                 ],
                 const SizedBox(height: 40),
@@ -224,10 +233,6 @@ class _GameStartUpScreenState extends State<GameStartUpScreen> {
   }
 
   void playGame({required GameProvider gameProvider}) async {
-    // if (gameProvider.playerColor == null) {
-    //   showSnackBar(context: context, content: 'Please select a player color');
-    //   return;
-    // }
     if (widget.isCustomTime) {
       if (whiteTimeInMinutes <= 0 || blackTimeInMinutes <= 0) {
         showSnackBar(context: context, content: 'Time must be greater than 0');
@@ -237,12 +242,28 @@ class _GameStartUpScreenState extends State<GameStartUpScreen> {
       await gameProvider.setGameTime(
         newSavedWhitesTime: whiteTimeInMinutes.toString(),
         newSavedBlacksTime: blackTimeInMinutes.toString(),
-      ).whenComplete(() {
+      );
+      if (gameProvider.vsComputer) {
         gameProvider.setIsLoading(value: false);
-        if (context.mounted) {
-          Navigator.pushNamed(context, Constants.gameScreen);
+        Navigator.pushNamed(context, Constants.gameScreen);
+      } else {
+        final user = context.read<AuthProvider>().user;
+        if (user == null) {
+          showSnackBar(context: context, content: 'Please log in to play online');
+          gameProvider.setIsLoading(value: false);
+          return;
         }
-      });
+        await gameProvider.searchGame(
+          user: user,
+          onSuccess: () {
+            gameProvider.setIsLoading(value: false);
+          },
+          onFail: (error) {
+            gameProvider.setIsLoading(value: false);
+            showSnackBar(context: context, content: error);
+          }, context: context,
+        );
+      }
     } else {
       try {
         final parts = widget.gameTime.split('+');
@@ -264,12 +285,28 @@ class _GameStartUpScreenState extends State<GameStartUpScreen> {
         await gameProvider.setGameTime(
           newSavedWhitesTime: gameTime,
           newSavedBlacksTime: gameTime,
-        ).whenComplete(() {
+        );
+        if (gameProvider.vsComputer) {
           gameProvider.setIsLoading(value: false);
-          if (context.mounted) {
-            Navigator.pushNamed(context, Constants.gameScreen);
+          Navigator.pushNamed(context, Constants.gameScreen);
+        } else {
+          final user = context.read<AuthProvider>().user;
+          if (user == null) {
+            showSnackBar(context: context, content: 'Please log in to play online');
+            gameProvider.setIsLoading(value: false);
+            return;
           }
-        });
+          await gameProvider.searchGame(
+            user: user,
+            onSuccess: () {
+              gameProvider.setIsLoading(value: false);
+            },
+            onFail: (error) {
+              gameProvider.setIsLoading(value: false);
+              showSnackBar(context: context, content: error);
+            }, context: context,
+          );
+        }
       } catch (e) {
         showSnackBar(context: context, content: 'Invalid game time format');
       }

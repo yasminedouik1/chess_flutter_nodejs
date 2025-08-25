@@ -1,9 +1,11 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';
 import 'package:flutter_chess/helper/helper_methods.dart';
-import 'dart:math';
+import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:flutter_chess/service/assets_manager.dart';
+import 'package:flutter_chess/services/api_service.dart';
 import 'package:provider/provider.dart';
 import 'package:squares/squares.dart';
 
@@ -34,40 +36,46 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   void dispose() {
+    context.read<GameProvider>().pauseWhitesTimer();
+    context.read<GameProvider>().pauseBlacksTimer();
+    if (!context.read<GameProvider>().vsComputer) {
+      ApiService.disposeSocket();
+    }
     super.dispose();
   }
 
   void _onMove(Move move) async {
     final gameProvider = context.read<GameProvider>();
-    bool result = gameProvider.makeSquaresMove(move);
-    if (result) {
-      await gameProvider.setSquaresState().whenComplete(() {
-        if (gameProvider.player == Squares.white) {
-          gameProvider.pauseWhitesTimer();
-          startTimer(isWhiteTimer: false, onNewGame: () {});
-        } else {
-          gameProvider.pauseBlacksTimer();
-          startTimer(isWhiteTimer: true, onNewGame: () {});
+    if (gameProvider.vsComputer) {
+      bool result = gameProvider.makeSquaresMove(move);
+      if (result) {
+        await gameProvider.setSquaresState().whenComplete(() {
+          if (gameProvider.player == Squares.white) {
+            gameProvider.pauseWhitesTimer();
+            startTimer(isWhiteTimer: false, onNewGame: () {});
+          } else {
+            gameProvider.pauseBlacksTimer();
+            startTimer(isWhiteTimer: true, onNewGame: () {});
+          }
+        });
+        if (gameProvider.state.state == PlayState.theirTurn && !gameProvider.aiThinking) {
+          gameProvider.setAiThinking(true);
+          await Future.delayed(Duration(milliseconds: Random().nextInt(2000) + 500));
+          gameProvider.game.makeRandomMove();
+          gameProvider.setAiThinking(false);
+          await gameProvider.setSquaresState().whenComplete(() {
+            if (gameProvider.player == Squares.white) {
+              gameProvider.pauseBlacksTimer();
+              startTimer(isWhiteTimer: true, onNewGame: () {});
+            } else {
+              gameProvider.pauseWhitesTimer();
+              startTimer(isWhiteTimer: false, onNewGame: () {});
+            }
+          });
         }
-      });
-    }
-    if (gameProvider.state.state == PlayState.theirTurn &&
-        !gameProvider.aiThinking) {
-      gameProvider.setAiThinking(true);
-      await Future.delayed(
-        Duration(milliseconds: Random().nextInt(2000) + 500),
-      );
-      gameProvider.game.makeRandomMove();
-      gameProvider.setAiThinking(false);
-      await gameProvider.setSquaresState().whenComplete(() {
-        if (gameProvider.player == Squares.white) {
-          gameProvider.pauseBlacksTimer();
-          startTimer(isWhiteTimer: true, onNewGame: () {});
-        } else {
-          gameProvider.pauseWhitesTimer();
-          startTimer(isWhiteTimer: false, onNewGame: () {});
-        }
-      });
+      }
+    } else {
+      await gameProvider.playMove(context: context, move: move);
     }
     await Future.delayed(const Duration(milliseconds: 500));
     checkGameOverListener();
@@ -90,12 +98,21 @@ class _GameScreenState extends State<GameScreen> {
   @override
   Widget build(BuildContext context) {
     final gameProvider = context.read<GameProvider>();
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.user;
     return WillPopScope(
       onWillPop: () async {
         bool? leave = await _showExitConfirmDialog(context);
         if (leave != null && leave) {
           gameProvider.pauseWhitesTimer();
           gameProvider.pauseBlacksTimer();
+          if (!gameProvider.vsComputer) {
+            ApiService.socket?.emit('resign', {
+              'gameId': gameProvider.gameId,
+              'userId': user?.uid,
+            });
+            ApiService.disposeSocket();
+          }
           await Future.delayed(const Duration(milliseconds: 200));
           if (context.mounted) {
             Navigator.pushNamedAndRemoveUntil(
@@ -144,16 +161,20 @@ class _GameScreenState extends State<GameScreen> {
                   ListTile(
                     leading: CircleAvatar(
                       radius: 25,
-                      backgroundImage: AssetImage(AssetsManager.user2Icon),
+                      backgroundImage: gameProvider.vsComputer
+                          ? AssetImage(AssetsManager.user2Icon)
+                          : NetworkImage(gameProvider.opponentImage.isEmpty
+                              ? AssetsManager.user2Icon
+                              : gameProvider.opponentImage),
                       backgroundColor: const Color(0xFF3A3A6A),
                     ),
-                    title: const Text(
-                      'user102',
-                      style: TextStyle(color: Colors.white),
+                    title: Text(
+                      gameProvider.vsComputer ? 'Computer' : gameProvider.opponentName.isEmpty ? 'Opponent' : gameProvider.opponentName,
+                      style: const TextStyle(color: Colors.white),
                     ),
-                    subtitle: const Text(
-                      'Rating: 3000',
-                      style: TextStyle(color: Colors.grey),
+                    subtitle: Text(
+                      'Rating: ${gameProvider.vsComputer ? 3000 : gameProvider.opponentRating}',
+                      style: const TextStyle(color: Colors.grey),
                     ),
                     trailing: Text(
                       gameProvider.isHumanWhite ? blacksTimer : whitesTimer,
@@ -186,16 +207,16 @@ class _GameScreenState extends State<GameScreen> {
                   ListTile(
                     leading: CircleAvatar(
                       radius: 25,
-                      backgroundImage: AssetImage(AssetsManager.userIcon),
+                      backgroundImage: NetworkImage(user?.image ?? AssetsManager.userIcon),
                       backgroundColor: const Color(0xFF3A3A6A),
                     ),
-                    title: const Text(
-                      'user257',
-                      style: TextStyle(color: Colors.white),
+                    title: Text(
+                      user?.username ?? 'You',
+                      style: const TextStyle(color: Colors.white),
                     ),
-                    subtitle: const Text(
-                      'Rating: 1200',
-                      style: TextStyle(color: Colors.grey),
+                    subtitle: Text(
+                      'Rating: ${user?.playerRating ?? 1200}',
+                      style: const TextStyle(color: Colors.grey),
                     ),
                     trailing: Text(
                       gameProvider.isHumanWhite ? whitesTimer : blacksTimer,

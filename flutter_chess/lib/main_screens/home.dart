@@ -22,77 +22,73 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF2A2A5A),
         title: const Text('ChessBoard', style: TextStyle(color: Colors.white)),
       ),
-    body: Center(
-  child: SingleChildScrollView(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-       Image.asset(
-  'assets/images/chessboard.png',
-  width: 300,    // set desired width
-  height: 300,   // set desired height
-  fit: BoxFit.contain, // scale image inside these dimensions
-),
-
-        // Your buttons below
-        SizedBox(
-          width: 300,
-          height: 120,
-          child: buildGameType(
-            label: 'Play vs Computer',
-            icon: Icons.computer,
-            onTap: () {
-              gameProvider.setVsComputer(value: true);
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const GameTimeScreen()));
-            },
+      body: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/images/chessboard.png',
+                width: 300,
+                height: 300,
+                fit: BoxFit.contain,
+              ),
+              SizedBox(
+                width: 300,
+                height: 120,
+                child: buildGameType(
+                  label: 'Play vs Computer',
+                  icon: Icons.computer,
+                  onTap: () {
+                    gameProvider.setVsComputer(value: true);
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const GameTimeScreen()));
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: 300,
+                height: 120,
+                child: buildGameType(
+                  label: 'Play vs Friend',
+                  icon: Icons.person,
+                  onTap: () {
+                    gameProvider.setVsComputer(value: false);
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const GameTimeScreen()));
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: 300,
+                height: 120,
+                child: buildGameType(
+                  label: 'Settings',
+                  icon: Icons.settings,
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: 300,
+                height: 120,
+                child: buildGameType(
+                  label: 'About',
+                  icon: Icons.info,
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutScreen()));
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: 300,
-          height: 120,
-          child: buildGameType(
-            label: 'Play vs Friend',
-            icon: Icons.person,
-            onTap: () {
-              gameProvider.setVsComputer(value: false);
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const GameTimeScreen()));
-            },
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: 300,
-          height: 120,
-          child: buildGameType(
-            label: 'Settings',
-            icon: Icons.settings,
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
-            },
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: 300,
-          height: 120,
-          child: buildGameType(
-            label: 'About',
-            icon: Icons.info,
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutScreen()));
-            },
-          ),
-        ),
-                const SizedBox(height: 20),
-
-      ],
-    ),
-  ),
-),
-bottomNavigationBar: MyBottomNavBar(currentIndex: 0), // 0 for HomeScreen
-
+      ),
+      bottomNavigationBar: MyBottomNavBar(currentIndex: 0),
     );
   }
 
@@ -102,22 +98,22 @@ bottomNavigationBar: MyBottomNavBar(currentIndex: 0), // 0 for HomeScreen
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: onTap,
-         child: SizedBox(
-        height: double.infinity, // takes full height given by SizedBox wrapper
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: const Color(0xFF26A69A), size: 35),  // made icon bigger too
-            const SizedBox(height: 15),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-              textAlign: TextAlign.center,
-            ),
-          ],
+        child: SizedBox(
+          height: double.infinity,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: const Color(0xFF26A69A), size: 35),
+              const SizedBox(height: 15),
+              Text(
+                label,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
-         ),
       ),
-      );
+    );
   }
 }

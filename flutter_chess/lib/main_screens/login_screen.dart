@@ -19,7 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscureText = true;
   bool isLoading = false;
 
-  void login() async {
+  Future<void> login() async {
     setState(() => isLoading = true);
 
     final result = await ApiService.login(

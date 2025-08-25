@@ -1,7 +1,13 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';
+import 'package:flutter_chess/models/user_model.dart';
+import 'package:flutter_chess/providers/auth_provider.dart';
+import 'package:flutter_chess/services/api_service.dart';
+import 'package:flutter_chess/widgets/widgets.dart';
+import 'package:provider/provider.dart';
 import 'package:square_bishop/square_bishop.dart';
 import 'package:squares/squares.dart';
 
@@ -18,8 +24,6 @@ class GameProvider extends ChangeNotifier {
   Timer? _whitesTimer;
   Timer? _blacksTimer;
   PlayerColor _playerColor = PlayerColor.white;
-  bool _isHumanWhite = true; // default → human plays white
-
   GameDifficulty _gameDifficulty = GameDifficulty.easy;
   Duration _whitesTime = Duration.zero;
   Duration _blacksTime = Duration.zero;
@@ -28,6 +32,23 @@ class GameProvider extends ChangeNotifier {
   double _whitesScore = 0.0;
   double _blacksScore = 0.0;
 
+  // PvP fields
+  String _gameId = '';
+  String _opponentId = '';
+  String _opponentName = '';
+  String _opponentImage = '';
+  int _opponentRating = 1200;
+  String _waitingText = '';
+  bool _isHumanWhite = true;
+
+  // Getters
+  String get gameId => _gameId;
+  String get opponentId => _opponentId;
+  String get opponentName => _opponentName;
+  String get opponentImage => _opponentImage;
+  int get opponentRating => _opponentRating;
+  String get waitingText => _waitingText;
+  bool get isHumanWhite => _isHumanWhite;
   Timer? get whitesTimer => _whitesTimer;
   Timer? get blacksTimer => _blacksTimer;
   bishop.Game get game => _game;
@@ -39,7 +60,6 @@ class GameProvider extends ChangeNotifier {
   int get incrementalValue => _incrementalValue;
   int get player => _player;
   PlayerColor get playerColor => _playerColor;
-  bool get isHumanWhite => _isHumanWhite;
   Duration get whitesTime => _whitesTime;
   Duration get blacksTime => _blacksTime;
   Duration get savedWhitesTime => _savedWhitesTime;
@@ -50,46 +70,44 @@ class GameProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   String getPositionFen() {
-    return game.fen;
+    return _game.fen;
   }
 
   void resetGame({required bool newGame, required BuildContext context}) {
     _whitesTimer?.cancel();
     _blacksTimer?.cancel();
     if (newGame) {
-      _player = _player == Squares.white ? Squares.white : Squares.black;
-      _playerColor = _player == Squares.white ? PlayerColor.white : PlayerColor.black;
+      _player = _player == Squares.white ? Squares.black : Squares.white;
+      _isHumanWhite = _player == Squares.white;
     }
     _game = bishop.Game(variant: bishop.Variant.standard());
-    _state = game.squaresState(_player);
-    _aiThinking = false;
+    _state = _game.squaresState(_player);
     _whitesTime = _savedWhitesTime != Duration.zero ? _savedWhitesTime : const Duration(minutes: 10);
     _blacksTime = _savedBlacksTime != Duration.zero ? _savedBlacksTime : const Duration(minutes: 10);
-
-    if (_vsComputer && game.turn != _player) {
-      _aiThinking = true;
-      Future.delayed(const Duration(milliseconds: 1000), () {
-        if (context.mounted) {
-          _game.makeRandomMove();
-          _state = game.squaresState(_player);
-          _aiThinking = false;
-          notifyListeners();
-          startTimer(isWhiteTimer: _player == Squares.white, onNewGame: () {}, context: context);
-        }
+    _aiThinking = false;
+    _opponentId = '';
+    _opponentName = '';
+    _opponentImage = '';
+    _opponentRating = 1200;
+    _waitingText = '';
+    if (_vsComputer && newGame && _player == Squares.black) {
+      Future.delayed(Duration(milliseconds: Random().nextInt(4050) + 250), () {
+        _game.makeRandomMove();
+        _state = _game.squaresState(_player);
+        notifyListeners();
       });
-    } else {
-      startTimer(isWhiteTimer: _player == Squares.white, onNewGame: () {}, context: context);
     }
+    //notifyListeners();
   }
 
   bool makeSquaresMove(Move move) {
-    bool result = game.makeSquaresMove(move);
+    bool result = _game.makeSquaresMove(move);
     notifyListeners();
     return result;
   }
 
   Future<void> setSquaresState() async {
-    _state = game.squaresState(_player);
+    _state = _game.squaresState(_player);
     notifyListeners();
   }
 
@@ -109,7 +127,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   void setIncrementalValue({required int value}) {
-    _incrementalValue = value >= 0 ? value : 0;
+    _incrementalValue = value;
     notifyListeners();
   }
 
@@ -123,54 +141,46 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setGameTime({required String newSavedWhitesTime, required String newSavedBlacksTime}) async {
-    int whiteMinutes, blackMinutes;
-    try {
-      whiteMinutes = int.parse(newSavedWhitesTime);
-      blackMinutes = int.parse(newSavedBlacksTime);
-      if (whiteMinutes <= 0 || blackMinutes <= 0) {
-        throw FormatException('Time must be greater than 0');
-      }
-    } catch (e) {
-      return; // Prevent setting invalid times
-    }
-    _savedWhitesTime = Duration(minutes: whiteMinutes);
-    _savedBlacksTime = Duration(minutes: blackMinutes);
-    _whitesTime = _savedWhitesTime;
-    _blacksTime = _savedBlacksTime;
+  void setWaitingText(String text) {
+    _waitingText = text;
+    notifyListeners();
+  }
+
+  Future<void> setGameTime({
+    required String newSavedWhitesTime,
+    required String newSavedBlacksTime,
+  }) async {
+    _savedWhitesTime = Duration(minutes: int.parse(newSavedWhitesTime));
+    _savedBlacksTime = Duration(minutes: int.parse(newSavedBlacksTime));
+    setWhitesTime(_savedWhitesTime);
+    setBlacksTime(_savedBlacksTime);
+    notifyListeners();
+  }
+
+  void setWhitesTime(Duration time) {
+    _whitesTime = time;
+    notifyListeners();
+  }
+
+  void setBlacksTime(Duration time) {
+    _blacksTime = time;
     notifyListeners();
   }
 
   void setPlayerColor({required int player}) {
-    _playerColor = player == 0 ? PlayerColor.white : PlayerColor.black;
-    _player = player == 0 ? Squares.white : Squares.black;
-    _isHumanWhite = player == 0; // 0 for white, 1 for black
-    notifyListeners();
-  }
-
-   void setHumanColor(bool white) {
-    _isHumanWhite = white;
+    _player = player;
+    _isHumanWhite = player == Squares.white;
+    _playerColor = player == Squares.white ? PlayerColor.white : PlayerColor.black;
     notifyListeners();
   }
 
   void setGameDifficulty({required int level}) {
-    switch (level) {
-      case 1:
-        _gameDifficulty = GameDifficulty.easy;
-        _gameLevel = 1;
-        break;
-      case 2:
-        _gameDifficulty = GameDifficulty.medium;
-        _gameLevel = 2;
-        break;
-      case 3:
-        _gameDifficulty = GameDifficulty.hard;
-        _gameLevel = 3;
-        break;
-      default:
-        _gameDifficulty = GameDifficulty.easy;
-        _gameLevel = 1;
-    }
+    _gameLevel = level;
+    _gameDifficulty = level == 1
+        ? GameDifficulty.easy
+        : level == 2
+            ? GameDifficulty.medium
+            : GameDifficulty.hard;
     notifyListeners();
   }
 
@@ -178,7 +188,6 @@ class GameProvider extends ChangeNotifier {
     if (_whitesTimer != null) {
       _whitesTime += Duration(seconds: _incrementalValue);
       _whitesTimer!.cancel();
-      _whitesTimer = null;
       notifyListeners();
     }
   }
@@ -187,64 +196,78 @@ class GameProvider extends ChangeNotifier {
     if (_blacksTimer != null) {
       _blacksTime += Duration(seconds: _incrementalValue);
       _blacksTimer!.cancel();
-      _blacksTimer = null;
       notifyListeners();
     }
   }
 
-  void startBlacksTime({required BuildContext context, required Function onNewGame}) {
-    if (_blacksTime <= Duration.zero) return;
-    pauseBlacksTimer();
-    _blacksTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_blacksTime > Duration.zero) {
-        _blacksTime -= const Duration(seconds: 1);
-        notifyListeners();
-      }
-      if (_blacksTime <= Duration.zero) {
-        pauseBlacksTimer();
-        if (context.mounted) {
-          gameOverDialog(context: context, timeOut: true, whiteWon: true, onNewGame: onNewGame);
-        }
-      }
-    });
-  }
-
-  void startWhitesTime({required BuildContext context, required Function onNewGame}) {
-    if (_whitesTime <= Duration.zero) return;
-    pauseWhitesTimer();
+  void startWhitesTime({
+    required BuildContext context,
+    required Function onNewGame,
+  }) {
     _whitesTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_whitesTime > Duration.zero) {
-        _whitesTime -= const Duration(seconds: 1);
-        notifyListeners();
-      }
+      _whitesTime = _whitesTime - const Duration(seconds: 1);
+      notifyListeners();
       if (_whitesTime <= Duration.zero) {
-        pauseWhitesTimer();
+        _whitesTimer!.cancel();
+        notifyListeners();
         if (context.mounted) {
-          gameOverDialog(context: context, timeOut: true, whiteWon: false, onNewGame: onNewGame);
+          gameOverDialog(
+            context: context,
+            timeOut: true,
+            whiteWon: false,
+            onNewGame: onNewGame,
+          );
         }
       }
     });
   }
 
-  void startTimer({required bool isWhiteTimer, required Function onNewGame, required BuildContext context}) {
-    if (isWhiteTimer) {
-      startWhitesTime(context: context, onNewGame: onNewGame);
-    } else {
-      startBlacksTime(context: context, onNewGame: onNewGame);
-    }
+  void startBlacksTime({
+    required BuildContext context,
+    required Function onNewGame,
+  }) {
+    _blacksTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _blacksTime = _blacksTime - const Duration(seconds: 1);
+      notifyListeners();
+      if (_blacksTime <= Duration.zero) {
+        _blacksTimer!.cancel();
+        notifyListeners();
+        if (context.mounted) {
+          gameOverDialog(
+            context: context,
+            timeOut: true,
+            whiteWon: true,
+            onNewGame: onNewGame,
+          );
+        }
+      }
+    });
   }
 
-  void gameOverListener({required BuildContext context, required Function onNewGame}) {
-    if (game.gameOver) {
+  void gameOverListener({
+    required BuildContext context,
+    required Function onNewGame,
+  }) {
+    if (_game.gameOver) {
       pauseWhitesTimer();
       pauseBlacksTimer();
       if (context.mounted) {
-        gameOverDialog(context: context, timeOut: false, whiteWon: game.winner == 0, onNewGame: onNewGame);
+        gameOverDialog(
+          context: context,
+          timeOut: false,
+          whiteWon: _game.winner == 0,
+          onNewGame: onNewGame,
+        );
       }
     }
   }
 
-  void gameOverDialog({required BuildContext context, required bool timeOut, required bool whiteWon, required Function onNewGame}) {
+  void gameOverDialog({
+    required BuildContext context,
+    required bool timeOut,
+    required bool whiteWon,
+    required Function onNewGame,
+  }) {
     String resultsToShow = '';
     double whiteScoresToShow = _whitesScore;
     double blackScoresToShow = _blacksScore;
@@ -258,13 +281,13 @@ class GameProvider extends ChangeNotifier {
         _blacksScore += 1.0;
       }
     } else {
-      resultsToShow = game.result?.readable ?? 'Game Over';
-      if (game.drawn) {
+      resultsToShow = _game.result?.readable ?? 'Game Over';
+      if (_game.drawn || _game.stalemate) {
         _whitesScore += 0.5;
         _blacksScore += 0.5;
-      } else if (game.winner == 0) {
+      } else if (_game.winner == 0) {
         _whitesScore += 1.0;
-      } else if (game.winner == 1) {
+      } else if (_game.winner == 1) {
         _blacksScore += 1.0;
       }
     }
@@ -290,10 +313,10 @@ class GameProvider extends ChangeNotifier {
             ),
             TextButton(
               onPressed: () {
+                Navigator.pop(context);
                 if (context.mounted) {
-                                 Navigator.pop(context);
-
                   resetGame(newGame: true, context: context);
+                  onNewGame();
                 }
               },
               child: const Text('New Game', style: TextStyle(color: Colors.white)),
@@ -302,5 +325,174 @@ class GameProvider extends ChangeNotifier {
         ),
       );
     }
+    notifyListeners();
+  }
+
+  // PvP Methods
+  Future<void> searchGame({
+    required BuildContext context,
+    required UserModel user,
+    required Function() onSuccess,
+    required Function(String) onFail,
+  }) async {
+    try {
+      final authProvider = context.read<AuthProvider>();
+      final token = authProvider.token;
+      if (token == null) {
+        setWaitingText('');
+        setIsLoading(value: false);
+        onFail('No token available. Please log in.');
+        return;
+      }
+      setWaitingText('Searching for opponent...');
+      setIsLoading(value: true);
+      final games = await ApiService.getAvailableGames(token);
+      if (games.isEmpty) {
+        final gameId = await ApiService.createGame(
+          token: token,
+          whiteTime: _savedWhitesTime.inMinutes,
+          blackTime: _savedBlacksTime.inMinutes,
+        );
+        _gameId = gameId;
+        _opponentId = '';
+        _opponentName = '';
+        _opponentImage = '';
+        _opponentRating = 1200;
+        ApiService.initSocket(gameId);
+        _listenForGameEvents(context);
+        notifyListeners();
+        // Poll for opponent
+        Timer.periodic(const Duration(seconds: 2), (timer) async {
+          final games = await ApiService.getAvailableGames(token);
+          final game = games.firstWhere((g) => g['gameId'] == _gameId, orElse: () => {});
+          if (game.isNotEmpty && game['isPlaying'] == true) {
+            timer.cancel();
+            _opponentId = game['opponentId'] ?? '';
+            _opponentName = game['opponentName'] ?? 'Opponent';
+            _opponentImage = game['opponentImage'] ?? '';
+            _opponentRating = game['opponentRating'] ?? 1200;
+            setWaitingText('');
+            setIsLoading(value: false);
+            notifyListeners();
+            onSuccess();
+            if (context.mounted) {
+              Navigator.pushNamed(context, Constants.gameScreen);
+            }
+          }
+        });
+      } else {
+        setWaitingText('Joining game...');
+        final game = await ApiService.joinGame(token: token, gameId: games[0]['gameId']);
+        _gameId = game['game']['gameId'];
+        _opponentId = game['game']['creatorId'] ?? '';
+        _opponentName = game['game']['creatorName'] ?? 'Opponent';
+        _opponentImage = game['game']['creatorImage'] ?? '';
+        _opponentRating = game['game']['creatorRating'] ?? 1200;
+        setPlayerColor(player: Squares.black);
+        ApiService.initSocket(_gameId);
+        _listenForGameEvents(context);
+        setWaitingText('');
+        setIsLoading(value: false);
+        notifyListeners();
+        onSuccess();
+        if (context.mounted) {
+          Navigator.pushNamed(context, Constants.gameScreen);
+        }
+      }
+    } catch (e) {
+      setWaitingText('');
+      setIsLoading(value: false);
+      notifyListeners();
+      onFail(e.toString());
+    }
+  }
+
+  void _listenForGameEvents(BuildContext context) {
+    ApiService.socket?.on('move', (data) {
+      final moveString = data['move'];
+      final isWhite = data['isWhite'] as bool;
+      final fen = data['fen'];
+      if ((isWhite && !_isHumanWhite) || (!isWhite && _isHumanWhite)) {
+        final move = _convertMoveStringToMove(moveString);
+        final result = makeSquaresMove(move);
+        if (result) {
+          _game = bishop.Game(fen: fen);
+          setSquaresState().whenComplete(() {
+            if (isWhite) {
+              pauseWhitesTimer();
+              startBlacksTime(context: context, onNewGame: () {});
+            } else {
+              pauseBlacksTimer();
+              startWhitesTime(context: context, onNewGame: () {});
+            }
+            gameOverListener(context: context, onNewGame: () {});
+          });
+        }
+      }
+    });
+
+    ApiService.socket?.on('game_over', (data) {
+      final authProvider = context.read<AuthProvider>();
+      final userId = authProvider.user?.uid;
+      if (context.mounted) {
+        gameOverDialog(
+          context: context,
+          timeOut: false,
+          whiteWon: data['winnerId'] == (userId ?? ''),
+          onNewGame: () {},
+        );
+      }
+    });
+  }
+
+  Future<void> playMove({
+    required BuildContext context,
+    required Move move,
+  }) async {
+    final authProvider = context.read<AuthProvider>();
+    final token = authProvider.token;
+    if (!_vsComputer && _gameId.isNotEmpty && token != null) {
+      final isWhite = _isHumanWhite;
+      final result = makeSquaresMove(move);
+      if (result) {
+        await setSquaresState();
+        ApiService.socket?.emit('move', {
+          'gameId': _gameId,
+          'move': move.toString(),
+          'isWhite': isWhite,
+          'fen': _game.fen,
+        });
+        if (isWhite) {
+          pauseWhitesTimer();
+          startBlacksTime(context: context, onNewGame: () {});
+        } else {
+          pauseBlacksTimer();
+          startWhitesTime(context: context, onNewGame: () {});
+        }
+        gameOverListener(context: context, onNewGame: () {});
+      }
+    } else if (token == null) {
+      showSnackBar(context: context, content: 'No token available. Please log in.');
+    }
+  }
+
+  Move _convertMoveStringToMove(String moveString) {
+    List<String> parts = moveString.split('-');
+    int from = int.parse(parts[0]);
+    int to = int.parse(parts[1].split('[')[0]);
+    String? promo;
+    String? piece;
+    if (moveString.contains('[')) {
+      String extras = moveString.split('[')[1].split(']')[0];
+      List<String> extraList = extras.split(',');
+      promo = extraList[0].isNotEmpty ? extraList[0] : null;
+      piece = extraList.length > 1 && extraList[1].isNotEmpty ? extraList[1] : null;
+    }
+    return Move(
+      from: from,
+      to: to,
+      promo: promo,
+      piece: piece,
+    );
   }
 }
