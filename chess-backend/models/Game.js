@@ -16,6 +16,7 @@ const gameSchema = new mongoose.Schema({
   fen: { type: String, default: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' },
   isWhitesTurn: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
+  increment: { type: Number, default: 0 },
 });
 
 module.exports = mongoose.model('Game', gameSchema);

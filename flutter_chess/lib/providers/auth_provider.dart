@@ -6,15 +6,27 @@ class AuthProvider extends ChangeNotifier {
   UserModel? _user;
   bool isLoggedIn = false;
   String? _token;
+  String? _userId;
 
-  UserModel? get user => _user;
   String? get token => _token;
+  String? get userId => _userId;
+  UserModel? get user => _user;
   String? get username => _user?.username;
 
   AuthProvider() {
     checkLogin();
   }
+void setAuthData({required String token, required String userId}) {
+    _token = token;
+    _userId = userId;
+    notifyListeners();
+  }
 
+  void clearAuthData() {
+    _token = null;
+    _userId = null;
+    notifyListeners();
+  }
   Future<void> checkLogin() async {
     _token = await ApiService.getToken();
     final userId = await ApiService.getUserId();

@@ -5,7 +5,6 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Game = require('../models/Game');
 
-// Middleware to verify JWT
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ message: 'No token provided' });
@@ -20,7 +19,7 @@ const authenticate = (req, res, next) => {
 
 // Create a new game
 router.post('/', authenticate, async (req, res) => {
-  const { whiteTime, blackTime } = req.body;
+  const { whiteTime, blackTime, increment } = req.body; // Added increment
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -32,8 +31,10 @@ router.post('/', authenticate, async (req, res) => {
       creatorRating: user.playerRating,
       whiteTime,
       blackTime,
+      increment: increment || 0, // Default 0
     });
     await game.save();
+    req.io.emit('new_game_available');
     res.json({ gameId: game.gameId });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
@@ -78,7 +79,23 @@ router.post('/:gameId/join', authenticate, async (req, res) => {
     game.opponentRating = user.playerRating;
     game.isPlaying = true;
     await game.save();
+    // Emit join event
+    req.io.to(gameId).emit('opponent_joined', { game });
     res.json({ game });
+  } catch (e) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Cancel/Delete game (only if not playing)
+router.delete('/:gameId', authenticate, async (req, res) => {
+  const { gameId } = req.params;
+  try {
+    const game = await Game.findOne({ gameId, creatorId: req.user.id, isPlaying: false });
+    if (!game) return res.status(400).json({ message: 'Cannot cancel game' });
+    await Game.deleteOne({ gameId });
+    req.io.emit('game_cancelled', { gameId });
+    res.json({ message: 'Game cancelled' });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
   }

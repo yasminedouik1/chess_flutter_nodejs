@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as socket_io;
@@ -115,50 +116,52 @@ class ApiService {
   }
 
   // Login
-static Future<Map<String, dynamic>> login({
-  required String email,
-  required String password,
-}) async {
-  final url = Uri.parse('$baseUrl/auth/login');
-  final response = await http.post(
-    url,
-    headers: {'Content-Type': 'application/json'},
-    body: jsonEncode({'email': email, 'password': password}),
-  );
+  static Future<Map<String, dynamic>> login({
+    required String email,
+    required String password,
+  }) async {
+    final url = Uri.parse('$baseUrl/auth/login');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
 
-  print('Login API status: ${response.statusCode}');
-  print('Login API body: ${response.body}');
+    print('Login API status: ${response.statusCode}');
+    print('Login API body: ${response.body}');
 
-  final data = _safeDecode(response.body);
+    final data = _safeDecode(response.body);
 
-  if (response.statusCode == 200) {
-    final token = data['token']?.toString();
-    final userId = _extractUserId(data);
-    final savedUsername = _extractUsername(data) ?? email; // Fallback to email if username is null
+    if (response.statusCode == 200) {
+      final token = data['token']?.toString();
+      final userId = _extractUserId(data);
+      final savedUsername =
+          _extractUsername(data) ??
+          email; // Fallback to email if username is null
 
-    print('Extracted token: $token');
-    print('Extracted userId: $userId');
-    print('Extracted username: $savedUsername');
+      print('Extracted token: $token');
+      print('Extracted userId: $userId');
+      print('Extracted username: $savedUsername');
 
-    if (token != null && userId != null) {
-      await saveUser(userId, token, savedUsername);
-      return {'success': true, 'data': data};
-    } else {
-      return {
-        'success': false,
-        'message': 'Login response missing token or user id',
-        'data': data,
-      };
+      if (token != null && userId != null) {
+        await saveUser(userId, token, savedUsername);
+        return {'success': true, 'data': data};
+      } else {
+        return {
+          'success': false,
+          'message': 'Login response missing token or user id',
+          'data': data,
+        };
+      }
     }
-  }
 
-  return {
-    'success': false,
-    'status': response.statusCode,
-    'message': data['message'] ?? 'Login failed',
-    'data': data,
-  };
-}
+    return {
+      'success': false,
+      'status': response.statusCode,
+      'message': data['message'] ?? 'Login failed',
+      'data': data,
+    };
+  }
 
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
@@ -172,6 +175,7 @@ static Future<Map<String, dynamic>> login({
     required String token,
     required int whiteTime,
     required int blackTime,
+    required int increment,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/games'),
@@ -179,7 +183,11 @@ static Future<Map<String, dynamic>> login({
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({'whiteTime': whiteTime, 'blackTime': blackTime}),
+      body: jsonEncode({
+        'whiteTime': whiteTime,
+        'blackTime': blackTime,
+        'increment': increment,
+      }),
     );
     final data = _safeDecode(response.body);
     if (response.statusCode == 200) {
@@ -218,6 +226,32 @@ static Future<Map<String, dynamic>> login({
     }
   }
 
+  static Future<void> deleteGame({
+    required String token,
+    required String gameId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/games/$gameId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to cancel game');
+    }
+  }
+
+  static Future<void> cancelGame({
+    required String token,
+    required String gameId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/games/$gameId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to cancel game');
+    }
+  }
+
   static void initSocket(String gameId) {
     socket = socket_io.io(baseUrl, {
       'transports': ['websocket'],
@@ -231,4 +265,24 @@ static Future<Map<String, dynamic>> login({
     socket?.disconnect();
     socket = null;
   }
+static void initializeSocket(String token) {
+    socket = socket_io.io('http://10.0.2.2:5000', {
+      'transports': ['websocket'],
+      'autoConnect': false,
+      'extraHeaders': {'Authorization': 'Bearer $token'},
+    });
+    socket!.connect();
+  }
+
+  static void joinGameRoom(String gameId) {
+    socket?.emit('join_game', {'gameId': gameId});
+  }
+
+  static void onOpponentJoined(BuildContext context, Function(Map<String, dynamic>) callback) {
+    socket?.on('opponent_joined', (data) {
+      callback(data['game']);
+    });
+  }
+
+
 }

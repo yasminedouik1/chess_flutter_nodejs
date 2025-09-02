@@ -9,6 +9,9 @@ class Constants {
   static const String loginScreen = '/loginScreen';
   static const String signupScreen = '/signupScreen';
   static const String profileScreen = '/profileScreen';
+  static const String pvpJoinScreen = '/pvpJoinScreen';
+  static const String pvpCreateScreen = '/pvpCreateScreen'; 
+  static const String waitingScreen = '/waitingScreen';
   static const custom = 'Custom';
 }
 

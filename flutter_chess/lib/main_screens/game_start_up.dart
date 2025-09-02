@@ -4,6 +4,7 @@ import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:flutter_chess/widgets/widgets.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_chess/main_screens/waiting_screen.dart';
 
 class GameStartUpScreen extends StatefulWidget {
   const GameStartUpScreen({
@@ -76,71 +77,48 @@ class _GameStartUpScreenState extends State<GameStartUpScreen> {
                 if (gameProvider.vsComputer) ...[
                   const Text(
                     'Game Difficulty',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: Colors.white70,
-                    ),
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       _buildDifficultyButton(
-                        title: 'Easy',
-                        value: GameDifficulty.easy,
-                        selected: gameProvider.gameDifficulty == GameDifficulty.easy,
+                        label: 'Easy',
+                        level: 1,
+                        isSelected: gameProvider.gameLevel == 1,
                         onTap: () => gameProvider.setGameDifficulty(level: 1),
                       ),
                       _buildDifficultyButton(
-                        title: 'Medium',
-                        value: GameDifficulty.medium,
-                        selected: gameProvider.gameDifficulty == GameDifficulty.medium,
+                        label: 'Medium',
+                        level: 2,
+                        isSelected: gameProvider.gameLevel == 2,
                         onTap: () => gameProvider.setGameDifficulty(level: 2),
                       ),
                       _buildDifficultyButton(
-                        title: 'Hard',
-                        value: GameDifficulty.hard,
-                        selected: gameProvider.gameDifficulty == GameDifficulty.hard,
+                        label: 'Hard',
+                        level: 3,
+                        isSelected: gameProvider.gameLevel == 3,
                         onTap: () => gameProvider.setGameDifficulty(level: 3),
                       ),
                     ],
                   ),
-                ] else ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      gameProvider.waitingText,
-                      style: const TextStyle(color: Colors.white70, fontSize: 16),
-                    ),
-                  ),
                 ],
-                const SizedBox(height: 40),
-                SizedBox(
-                  width: double.infinity,
-                  child: gameProvider.isLoading
-                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF26A69A)))
-                      : ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            backgroundColor: const Color(0xFF26A69A),
-                            elevation: 4,
-                          ),
-                          onPressed: () => playGame(gameProvider: gameProvider),
-                          child: const Text(
-                            'Play',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.1,
-                              color: Colors.white,
-                            ),
-                          ),
+                const SizedBox(height: 32),
+                gameProvider.isLoading
+                    ? const CircularProgressIndicator()
+                    : ElevatedButton(
+                        onPressed: () => playGame(gameProvider: gameProvider),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF26A69A),
+                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                ),
+                        child: const Text(
+                          'Play',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                      ),
               ],
             ),
           );
@@ -160,73 +138,70 @@ class _GameStartUpScreenState extends State<GameStartUpScreen> {
     required bool isCustom,
     required String fixedTime,
   }) {
-    return Card(
-      color: const Color(0xFF2E2E50),
-      elevation: 3,
-      shape: RoundedRectangleBorder(
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3A3A6A),
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: isSelected ? Colors.white : Colors.transparent, width: 1),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: PlayerColorRadioButton(
-                title: title,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Radio<PlayerColor>(
                 value: value,
-                groupValue: isSelected ? value : null,
-                onChanged: (_) => onSelect(),
+                groupValue: Provider.of<GameProvider>(context).playerColor,
+                onChanged: (PlayerColor? newValue) => onSelect(),
+                activeColor: const Color(0xFF26A69A),
               ),
-            ),
-            isCustom
-                ? BuildCustomTime(
-                    time: time.toString(),
-                    onLeftArrowClicked: onMinus,
-                    onRightArrowClicked: onPlus,
-                  )
-                : Container(
-                    height: 40,
-                    width: 80,
-                    decoration: BoxDecoration(
-                      border: Border.all(width: 0.5, color: Colors.white54),
-                      borderRadius: BorderRadius.circular(10),
-                      color: Colors.black26,
-                    ),
-                    child: Center(
-                      child: Text(
-                        fixedTime,
-                        style: const TextStyle(fontSize: 18, color: Colors.white70),
-                      ),
-                    ),
-                  ),
-          ],
-        ),
+              Text(
+                title,
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ],
+          ),
+          if (isCustom) Row(
+            children: [
+              IconButton(
+                onPressed: onMinus,
+                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+              ),
+              Text(
+                '$time min',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              IconButton(
+                onPressed: onPlus,
+                icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+              ),
+            ],
+          ) else Text(
+            fixedTime,
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildDifficultyButton({
-    required String title,
-    required GameDifficulty value,
-    required bool selected,
+    required String label,
+    required int level,
+    required bool isSelected,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: Chip(
-        label: Text(
-          title,
-          style: TextStyle(
-            color: selected ? Colors.white : Colors.white70,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: selected ? const Color(0xFF26A69A) : const Color(0xFF3A3A6A),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF26A69A) : const Color(0xFF3A3A6A),
           borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: selected ? Colors.white : Colors.white30, width: 1),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(color: Colors.white),
         ),
       ),
     );
@@ -253,15 +228,21 @@ class _GameStartUpScreenState extends State<GameStartUpScreen> {
           gameProvider.setIsLoading(value: false);
           return;
         }
-        await gameProvider.searchGame(
+        await gameProvider.createGame(
           user: user,
+          whiteTime: whiteTimeInMinutes * 60,
+          blackTime: blackTimeInMinutes * 60,
+          increment: gameProvider.incrementalValue,
+          context: context,
           onSuccess: () {
             gameProvider.setIsLoading(value: false);
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const WaitingScreen()));
+            gameProvider.startWaitingTimer(context: context);
           },
           onFail: (error) {
             gameProvider.setIsLoading(value: false);
             showSnackBar(context: context, content: error);
-          }, context: context,
+          },
         );
       }
     } else {
@@ -296,15 +277,21 @@ class _GameStartUpScreenState extends State<GameStartUpScreen> {
             gameProvider.setIsLoading(value: false);
             return;
           }
-          await gameProvider.searchGame(
+          await gameProvider.createGame(
             user: user,
+            whiteTime: gameTimeInt * 60,
+            blackTime: gameTimeInt * 60,
+            increment: incrementalTimeInt,
+            context: context,
             onSuccess: () {
               gameProvider.setIsLoading(value: false);
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const WaitingScreen()));
+              gameProvider.startWaitingTimer(context: context);
             },
             onFail: (error) {
               gameProvider.setIsLoading(value: false);
               showSnackBar(context: context, content: error);
-            }, context: context,
+            },
           );
         }
       } catch (e) {

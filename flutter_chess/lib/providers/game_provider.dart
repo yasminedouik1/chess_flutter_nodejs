@@ -40,6 +40,11 @@ class GameProvider extends ChangeNotifier {
   int _opponentRating = 1200;
   String _waitingText = '';
   bool _isHumanWhite = true;
+  Timer? _waitingTimer;
+  bool _drawOffered = false;
+  bool _rematchOffered = false;
+  bool _isPlaying = false;
+  String _userId = '';
 
   // Getters
   String get gameId => _gameId;
@@ -69,27 +74,89 @@ class GameProvider extends ChangeNotifier {
   bool get vsComputer => _vsComputer;
   bool get isLoading => _isLoading;
 
+bool get isPlaying => _isPlaying;
+  bool get drawOffered => _drawOffered;
+  bool get rematchOffered => _rematchOffered;
+
   String getPositionFen() {
     return _game.fen;
   }
 
+  set isHumanWhite(bool value) {
+    _isHumanWhite = value;
+//    _player = value ? Squares.white : Squares.black;
+    notifyListeners();
+  }
+
+  // New method to set opponent data
+  void setOpponentData({
+    required String opponentId,
+    required String opponentName,
+    required String opponentImage,
+    required int opponentRating,
+    required int whiteTime,
+    required int blackTime,
+    required int increment,
+  }) {
+    _opponentId = opponentId;
+    _opponentName = opponentName;
+    _opponentImage = opponentImage;
+    _opponentRating = opponentRating;
+    _savedWhitesTime = Duration(seconds: whiteTime);
+    _savedBlacksTime = Duration(seconds: blackTime);
+    _whitesTime = _savedWhitesTime;
+    _blacksTime = _savedBlacksTime;
+    _incrementalValue = increment;
+    notifyListeners();
+  }
+
+  // void resetGame({required bool newGame, required BuildContext context}) {
+  //   _whitesTimer?.cancel();
+  //   _blacksTimer?.cancel();
+  //   if (newGame) {
+  //     _player = _player == Squares.white ? Squares.black : Squares.white;
+  //     _isHumanWhite = _player == Squares.white;
+  //   }
+  //   _game = bishop.Game(variant: bishop.Variant.standard());
+  //   _state = _game.squaresState(_player);
+  //   _whitesTime = _savedWhitesTime != Duration.zero ? _savedWhitesTime : const Duration(minutes: 10);
+  //   _blacksTime = _savedBlacksTime != Duration.zero ? _savedBlacksTime : const Duration(minutes: 10);
+  //   _aiThinking = false;
+  //   _opponentId = '';
+  //   _opponentName = '';
+  //   _opponentImage = '';
+  //   _opponentRating = 1200;
+  //   _waitingText = '';
+  //   if (_vsComputer && newGame && _player == Squares.black) {
+  //     Future.delayed(Duration(milliseconds: Random().nextInt(4050) + 250), () {
+  //       _game.makeRandomMove();
+  //       _state = _game.squaresState(_player);
+  //       notifyListeners();
+  //     });
+  //   }
+  // }
   void resetGame({required bool newGame, required BuildContext context}) {
     _whitesTimer?.cancel();
     _blacksTimer?.cancel();
     if (newGame) {
-      _player = _player == Squares.white ? Squares.black : Squares.white;
-      _isHumanWhite = _player == Squares.white;
+      _player = _isHumanWhite ? Squares.white : Squares.black;
     }
     _game = bishop.Game(variant: bishop.Variant.standard());
     _state = _game.squaresState(_player);
-    _whitesTime = _savedWhitesTime != Duration.zero ? _savedWhitesTime : const Duration(minutes: 10);
-    _blacksTime = _savedBlacksTime != Duration.zero ? _savedBlacksTime : const Duration(minutes: 10);
+    _whitesTime = _savedWhitesTime != Duration.zero
+        ? _savedWhitesTime
+        : const Duration(minutes: 10);
+    _blacksTime = _savedBlacksTime != Duration.zero
+        ? _savedBlacksTime
+        : const Duration(minutes: 10);
     _aiThinking = false;
-    _opponentId = '';
-    _opponentName = '';
-    _opponentImage = '';
-    _opponentRating = 1200;
-    _waitingText = '';
+    if (!_vsComputer) {
+      _opponentId = '';
+      _opponentName = '';
+      _opponentImage = '';
+      _opponentRating = 1200;
+      _waitingText = '90';
+    }
     if (_vsComputer && newGame && _player == Squares.black) {
       Future.delayed(Duration(milliseconds: Random().nextInt(4050) + 250), () {
         _game.makeRandomMove();
@@ -97,7 +164,7 @@ class GameProvider extends ChangeNotifier {
         notifyListeners();
       });
     }
-    //notifyListeners();
+    notifyListeners();
   }
 
   bool makeSquaresMove(Move move) {
@@ -168,9 +235,9 @@ class GameProvider extends ChangeNotifier {
   }
 
   void setPlayerColor({required int player}) {
-    _player = player;
-    _isHumanWhite = player == Squares.white;
-    _playerColor = player == Squares.white ? PlayerColor.white : PlayerColor.black;
+    _playerColor = player == 0 ? PlayerColor.white : PlayerColor.black;
+    _player = player == 0 ? Squares.white : Squares.black;
+    _isHumanWhite = player == 0;
     notifyListeners();
   }
 
@@ -179,9 +246,77 @@ class GameProvider extends ChangeNotifier {
     _gameDifficulty = level == 1
         ? GameDifficulty.easy
         : level == 2
-            ? GameDifficulty.medium
-            : GameDifficulty.hard;
+        ? GameDifficulty.medium
+        : GameDifficulty.hard;
     notifyListeners();
+  }
+
+  Future<void> createGame({
+    required UserModel user,
+    required int whiteTime,
+    required int blackTime,
+    required int increment,
+    required BuildContext context,
+    required Function onSuccess,
+    required Function(String) onFail,
+  }) async {
+    final token = context.read<AuthProvider>().token;
+    if (token == null) {
+      onFail('No token available. Please log in.');
+      return;
+    }
+    try {
+      final gameId = await ApiService.createGame(
+        token: token,
+        whiteTime: whiteTime,
+        blackTime: blackTime,
+        increment: increment,
+      );
+      _gameId = gameId;
+      _userId = user.uid;
+      _isHumanWhite = true; // Creator is white
+      ApiService.socket?.emit('join_game', _gameId);
+      onSuccess();
+    } catch (e) {
+      onFail(e.toString());
+    }
+  }
+
+  Future<void> searchGame({
+    required UserModel user,
+    required Function onSuccess,
+    required Function(String) onFail,
+    required BuildContext context,
+    bool isJoin = false,
+    String? joinGameId,
+  }) async {
+    final token = context.read<AuthProvider>().token;
+    if (token == null) {
+      onFail('No token available. Please log in.');
+      return;
+    }
+    try {
+      if (isJoin && joinGameId != null) {
+        final game = await ApiService.joinGame(
+          token: token,
+          gameId: joinGameId,
+        );
+        _gameId = game['game']['gameId'];
+        _opponentId = game['game']['creatorId'];
+        _opponentName = game['game']['creatorName'];
+        _opponentImage = game['game']['creatorImage'];
+        _opponentRating = game['game']['creatorRating'];
+        _userId = user.uid;
+        _isPlaying = true;
+        ApiService.socket?.emit('join_game', _gameId);
+        onSuccess();
+        if (context.mounted) {
+          Navigator.pushNamed(context, Constants.gameScreen);
+        }
+      }
+    } catch (e) {
+      onFail(e.toString());
+    }
   }
 
   void pauseWhitesTimer() {
@@ -200,25 +335,49 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
+  // void startWhitesTime({required BuildContext context, required Function onNewGame}) {
+  //   _whitesTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+  //     _whitesTime = _whitesTime - const Duration(seconds: 1);
+  //     if (_whitesTime <= Duration.zero) {
+  //       timer.cancel();
+  //       ApiService.socket?.emit('timeout', {'gameId': _gameId, 'timedOutUserId': _isHumanWhite ? _userId : _opponentId});
+  //       gameOverDialog(context: context, timeOut: true, userWon: !_isHumanWhite, onNewGame: onNewGame, reason: 'timeout');
+  //     }
+  //     notifyListeners();
+  //   });
+  // }
+
+  // void startBlacksTime({required BuildContext context, required Function onNewGame}) {
+  //   _blacksTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+  //     _blacksTime = _blacksTime - const Duration(seconds: 1);
+  //     if (_blacksTime <= Duration.zero) {
+  //       timer.cancel();
+  //       ApiService.socket?.emit('timeout', {'gameId': _gameId, 'timedOutUserId': _isHumanWhite ? _opponentId : _userId});
+  //       gameOverDialog(context: context, timeOut: true, userWon: _isHumanWhite, onNewGame: onNewGame, reason: 'timeout');
+  //     }
+  //     notifyListeners();
+  //   });
+  // }
+
   void startWhitesTime({
     required BuildContext context,
     required Function onNewGame,
   }) {
-    _whitesTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _whitesTimer?.cancel();
+    _whitesTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _whitesTime = _whitesTime - const Duration(seconds: 1);
-      notifyListeners();
-      if (_whitesTime <= Duration.zero) {
-        _whitesTimer!.cancel();
-        notifyListeners();
-        if (context.mounted) {
-          gameOverDialog(
-            context: context,
-            timeOut: true,
-            whiteWon: false,
-            onNewGame: onNewGame,
-          );
-        }
+      if (_whitesTime <= Duration.zero &&
+          !_vsComputer &&
+          _game.turn == Squares.white) {
+        timer.cancel();
+        final userId = context.read<AuthProvider>().user?.uid;
+        final timedOutUserId = _isHumanWhite ? userId : _opponentId;
+        ApiService.socket?.emit('timeout', {
+          'gameId': _gameId,
+          'timedOutUserId': timedOutUserId,
+        });
       }
+      notifyListeners();
     });
   }
 
@@ -226,59 +385,129 @@ class GameProvider extends ChangeNotifier {
     required BuildContext context,
     required Function onNewGame,
   }) {
-    _blacksTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _blacksTimer?.cancel();
+    _blacksTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _blacksTime = _blacksTime - const Duration(seconds: 1);
-      notifyListeners();
-      if (_blacksTime <= Duration.zero) {
-        _blacksTimer!.cancel();
-        notifyListeners();
-        if (context.mounted) {
-          gameOverDialog(
-            context: context,
-            timeOut: true,
-            whiteWon: true,
-            onNewGame: onNewGame,
-          );
-        }
+      if (_blacksTime <= Duration.zero &&
+          !_vsComputer &&
+          _game.turn == Squares.black) {
+        timer.cancel();
+        final userId = context.read<AuthProvider>().user?.uid;
+        final timedOutUserId = _isHumanWhite ? _opponentId : userId;
+        ApiService.socket?.emit('timeout', {
+          'gameId': _gameId,
+          'timedOutUserId': timedOutUserId,
+        });
       }
+      notifyListeners();
     });
   }
+
+  // void gameOverListener({
+  //   required BuildContext context,
+  //   required Function onNewGame,
+  // }) {
+  //   if (_game.gameOver) {
+  //     pauseWhitesTimer();
+  //     pauseBlacksTimer();
+  //     _isPlaying = false;
+  //     if (context.mounted) {
+  //       gameOverDialog(
+  //         context: context,
+  //         timeOut: false,
+  //         userWon: (_game.winner == 0) == _isHumanWhite,
+  //         onNewGame: onNewGame,
+  //         reason: null,
+  //       );
+  //     }
+  //   }
+  // }
 
   void gameOverListener({
     required BuildContext context,
     required Function onNewGame,
   }) {
     if (_game.gameOver) {
-      pauseWhitesTimer();
-      pauseBlacksTimer();
-      if (context.mounted) {
-        gameOverDialog(
-          context: context,
-          timeOut: false,
-          whiteWon: _game.winner == 0,
-          onNewGame: onNewGame,
-        );
+      String reason;
+      String? winnerId;
+      if (_game.checkmate) {
+        reason = 'checkmate';
+        final winnerColor = _game.winner;
+        winnerId = (winnerColor == Squares.white)
+            ? (_isHumanWhite
+                  ? context.read<AuthProvider>().user?.uid
+                  : _opponentId)
+            : (_isHumanWhite
+                  ? _opponentId
+                  : context.read<AuthProvider>().user?.uid);
+      } else if (_game.stalemate || _game.insufficientMaterial) {
+        reason = 'draw';
+      } else {
+        reason = 'draw';
       }
+      _isPlaying = false;
+      if (!_vsComputer) {
+        ApiService.socket?.emit('game_over', {
+          'gameId': _gameId,
+          'reason': reason,
+          'winnerId': winnerId,
+        });
+      }
+      final userWon = winnerId == context.read<AuthProvider>().user?.uid;
+      gameOverDialog(
+        context: context,
+        timeOut: false,
+        userWon: userWon,
+        onNewGame: onNewGame,
+        reason: reason,
+      );
     }
   }
 
   void gameOverDialog({
     required BuildContext context,
     required bool timeOut,
-    required bool whiteWon,
+    required bool userWon,
     required Function onNewGame,
+    String? reason,
   }) {
     String resultsToShow = '';
     double whiteScoresToShow = _whitesScore;
     double blackScoresToShow = _blacksScore;
 
     if (timeOut) {
-      if (whiteWon) {
-        resultsToShow = 'White won on time';
-        _whitesScore += 1.0;
+      resultsToShow = userWon ? 'You won on time' : 'Opponent won on time';
+      if (userWon) {
+        if (_isHumanWhite) {
+          _whitesScore += 1.0;
+        } else {
+          _blacksScore += 1.0;
+        }
       } else {
-        resultsToShow = 'Black won on time';
-        _blacksScore += 1.0;
+        if (_isHumanWhite) {
+          _blacksScore += 1.0;
+        } else {
+          _whitesScore += 1.0;
+        }
+      }
+    } else if (reason == 'draw') {
+      resultsToShow = 'Draw';
+      _whitesScore += 0.5;
+      _blacksScore += 0.5;
+    } else if (reason == 'resign') {
+      resultsToShow = userWon ? 'Opponent resigned' : 'You resigned';
+      if (userWon) {
+        if (_isHumanWhite) {
+          _whitesScore += 1.0;
+        } else {
+          _blacksScore += 1.0;
+        }
+      } else {
+        if (_isHumanWhite) {
+          _blacksScore += 1.0;
+        } else {
+          _whitesScore += 1.0;
+        }
       }
     } else {
       resultsToShow = _game.result?.readable ?? 'Game Over';
@@ -299,14 +528,21 @@ class GameProvider extends ChangeNotifier {
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          title: Text('Game Over\n$whiteScoresToShow - $blackScoresToShow', textAlign: TextAlign.center),
+          title: Text(
+            'Game Over\n$whiteScoresToShow - $blackScoresToShow',
+            textAlign: TextAlign.center,
+          ),
           content: Text(resultsToShow, textAlign: TextAlign.center),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
                 if (context.mounted) {
-                  Navigator.pushNamedAndRemoveUntil(context, Constants.homeScreen, (route) => false);
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    Constants.homeScreen,
+                    (route) => false,
+                  );
                 }
               },
               child: const Text('Cancel', style: TextStyle(color: Colors.red)),
@@ -319,7 +555,10 @@ class GameProvider extends ChangeNotifier {
                   onNewGame();
                 }
               },
-              child: const Text('New Game', style: TextStyle(color: Colors.white)),
+              child: const Text(
+                'New Game',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -329,94 +568,428 @@ class GameProvider extends ChangeNotifier {
   }
 
   // PvP Methods
-  Future<void> searchGame({
-    required BuildContext context,
-    required UserModel user,
-    required Function() onSuccess,
-    required Function(String) onFail,
-  }) async {
-    try {
-      final authProvider = context.read<AuthProvider>();
-      final token = authProvider.token;
-      if (token == null) {
-        setWaitingText('');
-        setIsLoading(value: false);
-        onFail('No token available. Please log in.');
-        return;
-      }
-      setWaitingText('Searching for opponent...');
-      setIsLoading(value: true);
-      final games = await ApiService.getAvailableGames(token);
-      if (games.isEmpty) {
-        final gameId = await ApiService.createGame(
-          token: token,
-          whiteTime: _savedWhitesTime.inMinutes,
-          blackTime: _savedBlacksTime.inMinutes,
-        );
-        _gameId = gameId;
-        _opponentId = '';
-        _opponentName = '';
-        _opponentImage = '';
-        _opponentRating = 1200;
-        ApiService.initSocket(gameId);
-        _listenForGameEvents(context);
-        notifyListeners();
-        // Poll for opponent
-        Timer.periodic(const Duration(seconds: 2), (timer) async {
-          final games = await ApiService.getAvailableGames(token);
-          final game = games.firstWhere((g) => g['gameId'] == _gameId, orElse: () => {});
-          if (game.isNotEmpty && game['isPlaying'] == true) {
-            timer.cancel();
-            _opponentId = game['opponentId'] ?? '';
-            _opponentName = game['opponentName'] ?? 'Opponent';
-            _opponentImage = game['opponentImage'] ?? '';
-            _opponentRating = game['opponentRating'] ?? 1200;
-            setWaitingText('');
-            setIsLoading(value: false);
-            notifyListeners();
-            onSuccess();
-            if (context.mounted) {
-              Navigator.pushNamed(context, Constants.gameScreen);
-            }
-          }
-        });
-      } else {
-        setWaitingText('Joining game...');
-        final game = await ApiService.joinGame(token: token, gameId: games[0]['gameId']);
-        _gameId = game['game']['gameId'];
-        _opponentId = game['game']['creatorId'] ?? '';
-        _opponentName = game['game']['creatorName'] ?? 'Opponent';
-        _opponentImage = game['game']['creatorImage'] ?? '';
-        _opponentRating = game['game']['creatorRating'] ?? 1200;
-        setPlayerColor(player: Squares.black);
-        ApiService.initSocket(_gameId);
-        _listenForGameEvents(context);
-        setWaitingText('');
-        setIsLoading(value: false);
-        notifyListeners();
-        onSuccess();
+  // Future<void> searchGame({
+  //   required UserModel user,
+  //   required Function onSuccess,
+  //   required Function(String) onFail,
+  //   required BuildContext context,
+  //   bool isJoin = false,
+  //   String? joinGameId,
+  // }) async {
+  //   final token = context.read<AuthProvider>().token;
+  //   if (token == null) {
+  //     onFail('No token available. Please log in.');
+  //     return;
+  //   }
+  //   _userId = user.uid;
+  //   try {
+  //     if (isJoin && joinGameId != null) {
+  //       final data = await ApiService.joinGame(token: token, gameId: joinGameId);
+  //       _gameId = joinGameId;
+  //       ApiService.initSocket(_gameId);
+  //       _opponentId = data['game']['creatorId'];
+  //       _opponentName = data['game']['creatorName'];
+  //       _opponentImage = data['game']['creatorImage'];
+  //       _opponentRating = data['game']['creatorRating'];
+  //       _isHumanWhite = false;
+  //       _isPlaying = true;
+  //       initSocketListeners(context);
+  //       onSuccess();
+  //       Navigator.pushNamed(context, Constants.gameScreen);
+  //     } else {
+  //       _gameId = await ApiService.createGame(
+  //         token: token,
+  //         whiteTime: int.parse(_savedWhitesTime.inMinutes.toString()),
+  //         blackTime: int.parse(_savedBlacksTime.inMinutes.toString()),
+  //         increment: _incrementalValue,
+  //       );
+  //       ApiService.initSocket(_gameId);
+  //       _isHumanWhite = true;
+  //       initSocketListeners(context);
+  //       startWaitingTimer(context);
+  //       onSuccess();
+  //     }
+  //   } catch (e) {
+  //     onFail(e.toString());
+  //   }
+  // }
+
+  // void startWaitingTimer(BuildContext context) {
+  //   _waitingTimer = Timer(const Duration(seconds: 90), () async {
+  //     if (!_isPlaying) {
+  //       await cancelGame(context);
+  //       showSnackBar(context: context, content: 'No opponent found. Game cancelled.');
+  //       Navigator.pop(context);
+  //     }
+  //   });
+  // }
+
+  void startWaitingTimer({required BuildContext context}) {
+    int secondsLeft = 90;
+    _waitingTimer?.cancel();
+    _waitingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      secondsLeft--;
+      setWaitingText(secondsLeft.toString());
+      if (secondsLeft <= 0) {
+        timer.cancel();
+        cancelGame(context);
         if (context.mounted) {
-          Navigator.pushNamed(context, Constants.gameScreen);
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            Constants.homeScreen,
+            (route) => false,
+          );
+          showSnackBar(
+            context: context,
+            content: 'No opponent found. Game cancelled.',
+          );
         }
       }
-    } catch (e) {
-      setWaitingText('');
-      setIsLoading(value: false);
-      notifyListeners();
-      onFail(e.toString());
+    });
+  }
+  // Future<void> cancelGame(BuildContext context) async {
+  //   final token = context.read<AuthProvider>().token;
+  //   if (token != null && _gameId.isNotEmpty) {
+  //     await ApiService.deleteGame(token: token, gameId: _gameId);
+  //     _waitingTimer?.cancel();
+  //     _isPlaying = false;
+  //     resetPvPFields();
+  //     notifyListeners();
+  //   }
+  // }
+
+  Future<void> cancelGame(BuildContext context) async {
+    final token = context.read<AuthProvider>().token;
+    if (token != null && _gameId.isNotEmpty && !_isPlaying) {
+      try {
+        await ApiService.cancelGame(token: token, gameId: _gameId);
+        _waitingTimer?.cancel();
+        _gameId = '';
+        notifyListeners();
+      } catch (e) {
+        showSnackBar(context: context, content: 'Failed to cancel game: $e');
+      }
     }
   }
 
+  void resetPvPFields() {
+    _gameId = '';
+    _opponentId = '';
+    _opponentName = '';
+    _opponentImage = '';
+    _opponentRating = 1200;
+    _drawOffered = false;
+    _rematchOffered = false;
+    _isPlaying = false;
+  }
+
+  void offerDraw() {
+    ApiService.socket?.emit('offer_draw', {'gameId': _gameId});
+    notifyListeners();
+  }
+
+  void acceptDraw() {
+    ApiService.socket?.emit('accept_draw', {'gameId': _gameId});
+    _drawOffered = false;
+    notifyListeners();
+  }
+
+  void declineDraw() {
+    ApiService.socket?.emit('decline_draw', {'gameId': _gameId});
+    _drawOffered = false;
+    notifyListeners();
+  }
+
+  void offerRematch() {
+    ApiService.socket?.emit('rematch_offer', {'gameId': _gameId});
+    notifyListeners();
+  }
+
+  void acceptRematch() {
+    ApiService.socket?.emit('rematch_accept', {
+      'gameId': _gameId,
+      'originalCreatorId': _isHumanWhite ? _userId : _opponentId,
+      'originalOpponentId': _isHumanWhite ? _opponentId : _userId,
+      'whiteTime': _savedWhitesTime.inSeconds,
+      'blackTime': _savedBlacksTime.inSeconds,
+      'increment': _incrementalValue,
+    });
+    notifyListeners();
+  }
+
+  void declineRematch() {
+    ApiService.socket?.emit('decline_rematch', {'gameId': _gameId});
+    _rematchOffered = false;
+    notifyListeners();
+  }
+
+  // void initSocketListeners(BuildContext context) {
+  //   ApiService.socket?.on('opponent_joined', (data) {
+  //     final game = data['game'];
+  //     _opponentId = game['opponentId'];
+  //     _opponentName = game['opponentName'];
+  //     _opponentImage = game['opponentImage'];
+  //     _opponentRating = game['opponentRating'];
+  //     _waitingTimer?.cancel();
+  //     _isPlaying = true;
+  //     if (context.mounted) {
+  //       Navigator.pushReplacementNamed(context, Constants.gameScreen);
+  //     }
+  //     notifyListeners();
+  //   });
+
+  //   ApiService.socket?.on('draw_offered', (_) {
+  //     _drawOffered = true;
+  //     notifyListeners();
+  //   });
+
+  //   ApiService.socket?.on('draw_declined', (_) {
+  //     _drawOffered = false;
+  //     notifyListeners();
+  //   });
+
+  //   ApiService.socket?.on('rematch_offered', (_) {
+  //     _rematchOffered = true;
+  //     notifyListeners();
+  //   });
+
+  //   ApiService.socket?.on('rematch_started', (data) {
+  //     _gameId = data['newGameId'];
+  //     _isHumanWhite = !_isHumanWhite;
+  //     resetGame(newGame: true, context: context);
+  //     notifyListeners();
+  //   });
+
+  //   _listenForGameEvents(context);
+  // }
+
+  void initSocketListeners(BuildContext context) {
+    ApiService.socket?.on('move', (data) {
+      final move = _convertMoveStringToMove(data['move']);
+      final isWhite = data['isWhite'];
+      _game.makeMoveString(move.toString());
+      setSquaresState();
+      if (isWhite) {
+        _whitesTime = Duration(seconds: data['whiteTime']);
+        pauseBlacksTimer();
+        startWhitesTime(context: context, onNewGame: () {});
+      } else {
+        _blacksTime = Duration(seconds: data['blackTime']);
+        pauseWhitesTimer();
+        startBlacksTime(context: context, onNewGame: () {});
+      }
+      notifyListeners();
+      gameOverListener(context: context, onNewGame: () {});
+    });
+
+    ApiService.socket?.on('opponent_joined', (data) {
+      final game = data['game'];
+      setOpponentData(
+        opponentId: game['opponentId'],
+        opponentName: game['opponentName'] ?? 'Opponent',
+        opponentImage: game['opponentImage'] ?? '',
+        opponentRating: game['opponentRating'] ?? 1200,
+        whiteTime: game['whiteTime'],
+        blackTime: game['blackTime'],
+        increment: game['increment'],
+      );
+      _isHumanWhite = true; // Creator is white
+      _isPlaying = true;
+      _waitingTimer?.cancel();
+      notifyListeners();
+      Navigator.pushReplacementNamed(context, Constants.gameScreen, arguments: {
+        'gameId': _gameId,
+        'opponentName': _opponentName,
+        'opponentRating': _opponentRating,
+      });
+    });
+
+ApiService.socket?.on('draw_offered', (_) {
+      _drawOffered = true;
+      notifyListeners();
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Draw Offered'),
+          content: const Text('Your opponent has offered a draw. Accept?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                ApiService.socket?.emit('decline_draw', {'gameId': _gameId});
+                _drawOffered = false;
+                notifyListeners();
+                Navigator.pop(context);
+              },
+              child: const Text('Decline'),
+            ),
+            TextButton(
+              onPressed: () {
+                ApiService.socket?.emit('accept_draw', {'gameId': _gameId});
+                _drawOffered = false;
+                notifyListeners();
+                Navigator.pop(context);
+              },
+              child: const Text('Accept'),
+            ),
+          ],
+        ),
+      );
+    });
+
+    ApiService.socket?.on('draw_declined', (_) {
+      _drawOffered = false;
+      notifyListeners();
+      showSnackBar(context: context, content: 'Draw offer declined');
+    });
+
+    ApiService.socket?.on('rematch_offered', (_) {
+      _rematchOffered = true;
+      notifyListeners();
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Rematch Offered'),
+          content: const Text('Your opponent has offered a rematch. Accept?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _rematchOffered = false;
+                notifyListeners();
+                Navigator.pop(context);
+              },
+              child: const Text('Decline'),
+            ),
+            TextButton(
+              onPressed: () {
+                ApiService.socket?.emit('rematch_accept', {
+                  'gameId': _gameId,
+                  'originalCreatorId': _isHumanWhite ? _userId : _opponentId,
+                  'originalOpponentId': _isHumanWhite ? _opponentId : _userId,
+                  'whiteTime': _savedWhitesTime.inSeconds,
+                  'blackTime': _savedBlacksTime.inSeconds,
+                  'increment': _incrementalValue,
+                });
+                _rematchOffered = false;
+                notifyListeners();
+                Navigator.pop(context);
+              },
+              child: const Text('Accept'),
+            ),
+          ],
+        ),
+      );
+    });
+
+    ApiService.socket?.on('rematch_started', (data) {
+      _gameId = data['newGameId'];
+      _opponentId = data['newGame']['opponentId'];
+      _opponentName = data['newGame']['opponentName'] ?? 'Opponent';
+      _opponentImage = data['newGame']['opponentImage'] ?? '';
+      _opponentRating = data['newGame']['opponentRating'] ?? 1200;
+      _isHumanWhite = !_isHumanWhite; // Swap color
+      _whitesTime = Duration(seconds: data['newGame']['whiteTime']);
+      _blacksTime = Duration(seconds: data['newGame']['blackTime']);
+      _incrementalValue = data['newGame']['increment'];
+      _game = bishop.Game(variant: bishop.Variant.standard());
+      setSquaresState();
+      notifyListeners();
+      Navigator.pushReplacementNamed(context, Constants.gameScreen, arguments: {
+        'gameId': _gameId,
+        'opponentName': _opponentName,
+        'opponentRating': _opponentRating,
+      });
+    });
+
+    ApiService.socket?.on('invalid_move', (data) {
+      showSnackBar(context: context, content: data['message']);
+    });
+
+    ApiService.socket?.on('error', (data) {
+      showSnackBar(context: context, content: data['message']);
+    });
+
+    ApiService.socket?.on('game_over', (data) {
+      _isPlaying = false;
+      final reason = data['reason'];
+      final winnerId = data['winnerId'];
+      bool userWon = winnerId == _userId;
+      bool timeOut = reason == 'timeout';
+      gameOverDialog(
+        context: context,
+        timeOut: timeOut,
+        userWon: userWon,
+        onNewGame: () {
+          if (!_vsComputer) {
+            offerRematch();
+          }
+        },
+        reason: reason,
+      );
+      notifyListeners();
+    });
+
+    _listenForGameEvents(context);
+  }
+
+  // void _listenForGameEvents(BuildContext context) {
+  //   ApiService.socket?.on('move', (data) {
+  //     final moveString = data['move'];
+  //     final isWhite = data['isWhite'] as bool;
+  //     final fen = data['fen'];
+  //     if ((isWhite && !_isHumanWhite) || (!isWhite && _isHumanWhite)) {
+  //       final move = _convertMoveStringToMove(moveString);
+  //       final result = makeSquaresMove(move);
+  //       if (result) {
+  //         _game = bishop.Game(fen: fen);
+  //         setSquaresState().whenComplete(() {
+  //           if (isWhite) {
+  //             pauseWhitesTimer();
+  //             startBlacksTime(context: context, onNewGame: () {});
+  //           } else {
+  //             pauseBlacksTimer();
+  //             startWhitesTime(context: context, onNewGame: () {});
+  //           }
+  //           gameOverListener(context: context, onNewGame: () {});
+  //         });
+  //       }
+  //     }
+  //   });
+
+  //   ApiService.socket?.on('game_over', (data) {
+  //     final authProvider = context.read<AuthProvider>();
+  //     final userId = authProvider.user?.uid;
+  //     final String? reason = data['reason'];
+  //     bool userWon = false;
+  //     if (reason != 'draw') {
+  //       userWon = data['winnerId'] == userId;
+  //     }
+  //     _isPlaying = false;
+  //     if (context.mounted) {
+  //       gameOverDialog(
+  //         context: context,
+  //         timeOut: false,
+  //         userWon: userWon,
+  //         onNewGame: () {},
+  //         reason: reason,
+  //       );
+  //     }
+  //     notifyListeners();
+  //   });
+  // }
   void _listenForGameEvents(BuildContext context) {
     ApiService.socket?.on('move', (data) {
       final moveString = data['move'];
       final isWhite = data['isWhite'] as bool;
       final fen = data['fen'];
+      final whiteTime = data['whiteTime'];
+      final blackTime = data['blackTime'];
       if ((isWhite && !_isHumanWhite) || (!isWhite && _isHumanWhite)) {
         final move = _convertMoveStringToMove(moveString);
         final result = makeSquaresMove(move);
         if (result) {
           _game = bishop.Game(fen: fen);
+          _whitesTime = Duration(seconds: whiteTime);
+          _blacksTime = Duration(seconds: blackTime);
           setSquaresState().whenComplete(() {
             if (isWhite) {
               pauseWhitesTimer();
@@ -434,17 +1007,59 @@ class GameProvider extends ChangeNotifier {
     ApiService.socket?.on('game_over', (data) {
       final authProvider = context.read<AuthProvider>();
       final userId = authProvider.user?.uid;
+      final String? reason = data['reason'];
+      bool userWon = false;
+      if (reason != 'draw') {
+        userWon = data['winnerId'] == userId;
+      }
+      _isPlaying = false;
       if (context.mounted) {
         gameOverDialog(
           context: context,
-          timeOut: false,
-          whiteWon: data['winnerId'] == (userId ?? ''),
-          onNewGame: () {},
+          timeOut: reason == 'timeout',
+          userWon: userWon,
+          onNewGame: () {
+            if (!_vsComputer) {
+              offerRematch();
+            }
+          },
+          reason: reason,
         );
       }
+      notifyListeners();
     });
   }
 
+  // Future<void> playMove({
+  //   required BuildContext context,
+  //   required Move move,
+  // }) async {
+  //   final authProvider = context.read<AuthProvider>();
+  //   final token = authProvider.token;
+  //   if (!_vsComputer && _gameId.isNotEmpty && token != null) {
+  //     final isWhite = _isHumanWhite;
+  //     final result = makeSquaresMove(move);
+  //     if (result) {
+  //       await setSquaresState();
+  //       ApiService.socket?.emit('move', {
+  //         'gameId': _gameId,
+  //         'move': move.toString(),
+  //         'isWhite': isWhite,
+  //         'fen': _game.fen,
+  //       });
+  //       if (isWhite) {
+  //         pauseWhitesTimer();
+  //         startBlacksTime(context: context, onNewGame: () {});
+  //       } else {
+  //         pauseBlacksTimer();
+  //         startWhitesTime(context: context, onNewGame: () {});
+  //       }
+  //       gameOverListener(context: context, onNewGame: () {});
+  //     }
+  //   } else if (token == null) {
+  //     showSnackBar(context: context, content: 'No token available. Please log in.');
+  //   }
+  // }
   Future<void> playMove({
     required BuildContext context,
     required Move move,
@@ -455,6 +1070,12 @@ class GameProvider extends ChangeNotifier {
       final isWhite = _isHumanWhite;
       final result = makeSquaresMove(move);
       if (result) {
+        if (isWhite) {
+          _whitesTime += Duration(seconds: _incrementalValue);
+        } else {
+          _blacksTime += Duration(seconds: _incrementalValue);
+        }
+        notifyListeners();
         await setSquaresState();
         ApiService.socket?.emit('move', {
           'gameId': _gameId,
@@ -472,7 +1093,10 @@ class GameProvider extends ChangeNotifier {
         gameOverListener(context: context, onNewGame: () {});
       }
     } else if (token == null) {
-      showSnackBar(context: context, content: 'No token available. Please log in.');
+      showSnackBar(
+        context: context,
+        content: 'No token available. Please log in.',
+      );
     }
   }
 
@@ -486,13 +1110,10 @@ class GameProvider extends ChangeNotifier {
       String extras = moveString.split('[')[1].split(']')[0];
       List<String> extraList = extras.split(',');
       promo = extraList[0].isNotEmpty ? extraList[0] : null;
-      piece = extraList.length > 1 && extraList[1].isNotEmpty ? extraList[1] : null;
+      piece = extraList.length > 1 && extraList[1].isNotEmpty
+          ? extraList[1]
+          : null;
     }
-    return Move(
-      from: from,
-      to: to,
-      promo: promo,
-      piece: piece,
-    );
+    return Move(from: from, to: to, promo: promo, piece: piece);
   }
 }

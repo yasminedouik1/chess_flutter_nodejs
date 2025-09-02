@@ -1,4 +1,7 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_chess/constants.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:squares/squares.dart';
 
 String getTimerToDisplay({
@@ -17,6 +20,57 @@ String getTimerToDisplay({
   final minutes = twoDigits(duration.inMinutes.remainder(60));
   final seconds = twoDigits(duration.inSeconds.remainder(60));
   return '$minutes:$seconds';
+}
+
+
+void gameOverDialog({
+  required BuildContext context,
+  required bool timeOut,
+  required bool userWon,
+  required Function onNewGame,
+  required String reason,
+}) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: Text(
+        timeOut ? 'Time Out' : reason == 'draw' ? 'Draw' : userWon ? 'You Won!' : 'You Lost!',
+        textAlign: TextAlign.center,
+      ),
+      content: Text(
+        timeOut
+            ? 'Game ended due to time out.'
+            : reason == 'draw'
+                ? 'The game ended in a draw.'
+                : userWon
+                    ? 'Congratulations, you won by $reason!'
+                    : 'You lost by $reason.',
+        textAlign: TextAlign.center,
+      ),
+      actions: [
+        if (!context.read<GameProvider>().vsComputer) ...[
+          TextButton(
+            onPressed: () {
+              onNewGame();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Rematch'),
+          ),
+        ],
+        TextButton(
+          onPressed: () {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              Constants.homeScreen,
+              (route) => false,
+            );
+          },
+          child: const Text('Back to Home'),
+        ),
+      ],
+    ),
+  );
 }
 
 final List<String> gameTimes = [
