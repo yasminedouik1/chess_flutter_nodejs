@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chess/main_screens/about.dart';
 import 'package:flutter_chess/main_screens/bottom_navbar.dart';
 import 'package:flutter_chess/main_screens/gameTime.dart';
-import 'package:flutter_chess/main_screens/pvp_join.dart';
+import 'package:flutter_chess/main_screens/play_vs_friend.dart';
+
 import 'package:flutter_chess/main_screens/settings.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:provider/provider.dart';
@@ -60,29 +61,42 @@ class _HomeScreenState extends State<HomeScreen> {
               //     },
               //   ),
               // ),
+              // const SizedBox(height: 10),
+              // SizedBox(
+              //   width: 300,
+              //   height: 120,
+              //   child: buildGameType(
+              //     label: 'Create PvP Game',
+              //     icon: Icons.person_add,
+              //     onTap: () {
+              //       gameProvider.setVsComputer(value: false);
+              //       Navigator.push(context, MaterialPageRoute(builder: (context) => const GameTimeScreen()));
+              //     },
+              //   ),
+              // ),
+              // const SizedBox(height: 10),
+              // SizedBox(
+              //   width: 300,
+              //   height: 120,
+              //   child: buildGameType(
+              //     label: 'Join PvP Game',
+              //     icon: Icons.group,
+              //     onTap: () {
+              //       gameProvider.setVsComputer(value: false);
+              //       Navigator.push(context, MaterialPageRoute(builder: (context) => PvPJoinScreen()));
+              //     },
+              //   ),
+              // ),
               const SizedBox(height: 10),
               SizedBox(
                 width: 300,
                 height: 120,
                 child: buildGameType(
-                  label: 'Create PvP Game',
-                  icon: Icons.person_add,
+                  label: 'Play vs Friend',
+                  icon: Icons.person,
                   onTap: () {
                     gameProvider.setVsComputer(value: false);
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const GameTimeScreen()));
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: 300,
-                height: 120,
-                child: buildGameType(
-                  label: 'Join PvP Game',
-                  icon: Icons.group,
-                  onTap: () {
-                    gameProvider.setVsComputer(value: false);
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => PvPJoinScreen()));
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const PlayVsFriendScreen()));
                   },
                 ),
               ),

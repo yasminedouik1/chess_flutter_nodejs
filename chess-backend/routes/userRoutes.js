@@ -2,8 +2,19 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
-const upload = require('../middleware/upload');
+const auth = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
 
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}${path.extname(file.originalname)}`);
+  },
+});
+const upload = multer({ storage });
 // ✅ CREATE new user
 router.post('/', async (req, res) => {
   try {
@@ -43,30 +54,28 @@ router.get('/:id', async (req, res) => {
 });
 
 // ✅ UPDATE user (username, email, password, image, playerRating)
-router.put('/:id', upload.single("image"), async (req, res) => {
+router.put('/:id', auth, upload.single('image'), async (req, res) => {
   try {
-    const { username, email, password, playerRating } = req.body;
-
-    let updateData = {};
-    if (username) updateData.username = username;
-    if (email) updateData.email = email;
-    if (playerRating !== undefined) updateData.playerRating = Number(playerRating);
-
-    if (password) {
-      const salt = await bcrypt.genSalt(10);
-      updateData.password = await bcrypt.hash(password, salt);
-    }
-
-    if (req.file) {
-      updateData.image = `/uploads/${req.file.filename}`;
-    }
-
-    const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true }).select('-password');
-
+    const userId = req.params.id;
+    const { username, email, password } = req.body;
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
-    res.json(user);
+
+    if (username) user.username = username;
+    if (email) user.email = email;
+    if (password) user.password = await bcrypt.hash(password, 10);
+    if (req.file) user.image = `/uploads/${req.file.filename}`;
+
+    await user.save();
+    res.json({
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      image: user.image,
+      playerRating: user.playerRating,
+    });
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

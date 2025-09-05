@@ -4,12 +4,14 @@ import 'package:flutter_chess/main_screens/about.dart';
 import 'package:flutter_chess/main_screens/game.dart';
 import 'package:flutter_chess/main_screens/gameTime.dart';
 import 'package:flutter_chess/main_screens/home.dart';
+import 'package:flutter_chess/main_screens/join_room.dart';
 import 'package:flutter_chess/main_screens/login_screen.dart';
 import 'package:flutter_chess/main_screens/profile_screen.dart';
 import 'package:flutter_chess/main_screens/pvp_join.dart';
 import 'package:flutter_chess/main_screens/settings.dart';
 import 'package:flutter_chess/main_screens/signup_screen.dart';
 import 'package:flutter_chess/main_screens/waiting_screen.dart';
+import 'package:flutter_chess/main_screens/play_vs_friend.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:provider/provider.dart';
@@ -77,7 +79,10 @@ class MyApp extends StatelessWidget {
         Constants.profileScreen: (context) => const ProfileScreen(),
         Constants.waitingScreen: (context) => const WaitingScreen(),
         Constants.pvpJoinScreen: (context) => PvPJoinScreen(),
-        },
+        Constants.playVsFriendScreen: (context) => const PlayVsFriendScreen(),
+                Constants.joinRoomScreen: (context) => const JoinRoomScreen(),
+
+      },
     );
   }
 }
