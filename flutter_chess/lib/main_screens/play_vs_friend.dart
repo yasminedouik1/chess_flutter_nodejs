@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_chess/main_screens/gameTime.dart';
+import 'package:flutter_chess/main_screens/game_setup.dart';
 import 'package:flutter_chess/main_screens/join_room.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
@@ -36,7 +36,7 @@ class PlayVsFriendScreen extends StatelessWidget {
                   }
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const GameTimeScreen()),
+                    MaterialPageRoute(builder: (context) => const GameSetupScreen()),
                   );
                 },
               ),

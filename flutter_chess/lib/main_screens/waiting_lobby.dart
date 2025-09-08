@@ -4,9 +4,7 @@ import '../providers/game_provider.dart';
 import '../constants.dart';
 
 class WaitingLobby extends StatelessWidget {
-  final String gameId;
-
-  const WaitingLobby({Key? key, required this.gameId}) : super(key: key);
+  const WaitingLobby({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +26,7 @@ class WaitingLobby extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              'Game ID: $gameId',
+              'Game ID: ${gameProvider.gameId}',
               style: const TextStyle(fontSize: 18, color: Colors.white70),
             ),
             if (gameProvider.isPrivate)
@@ -40,12 +38,15 @@ class WaitingLobby extends StatelessWidget {
             const CircularProgressIndicator(),
             const SizedBox(height: 40),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  Constants.homeScreen,
-                  (route) => false,
-                );
+              onPressed: () async {
+                await gameProvider.leaveGame(context);
+                if (context.mounted) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    Constants.homeScreen,
+                    (route) => false,
+                  );
+                }
               },
               child: const Text('Cancel'),
             ),

@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_chess/main_screens/waiting_lobby.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
@@ -8,81 +9,58 @@ import 'package:flutter_chess/services/api_service.dart';
 import 'package:provider/provider.dart';
 import 'package:squares/squares.dart';
 
-class GameScreen extends StatefulWidget {
+class GameScreen extends HookWidget {
   const GameScreen({super.key});
 
   @override
-  State<GameScreen> createState() => _GameScreenState();
-}
+  Widget build(BuildContext context) {
+    // Provider access
+    final gameProvider = context.watch<GameProvider>();
+    final authProvider = context.watch<AuthProvider>();
+    final user = authProvider.user;
 
-final BoardTheme blackWhiteTheme = BoardTheme(
-  lightSquare: Colors.white,
-  darkSquare: const Color.fromARGB(255, 194, 194, 194),
-  check: Colors.red,
-  checkmate: const Color.fromARGB(255, 222, 119, 8),
-  previous: const Color.fromARGB(255, 145, 193, 233),
-  selected: const Color.fromARGB(255, 88, 196, 110),
-  premove: const Color.fromARGB(255, 124, 124, 124),
-);
-
-class _GameScreenState extends State<GameScreen> {
-  @override
-  void initState() {
-    super.initState();
-    final gameProvider = context.read<GameProvider>();
-    gameProvider.resetGame(newGame: false, context: context);
-    if (!gameProvider.vsComputer) {
-      gameProvider.initSocketListeners(context);
-      startTimer(isWhiteTimer: true, onNewGame: () {});
+    // Helper functions
+    void startTimer(BuildContext context, {required bool isWhiteTimer, required Function onNewGame}) {
+      if (isWhiteTimer) {
+        gameProvider.startWhitesTime(context: context, onNewGame: onNewGame);
+    } else {
+        gameProvider.startBlacksTime(context: context, onNewGame: onNewGame);
+      }
     }
-  }
 
-  @override
-  void dispose() {
-    context.read<GameProvider>().pauseWhitesTimer();
-    context.read<GameProvider>().pauseBlacksTimer();
-    if (!context.read<GameProvider>().vsComputer) {
-      ApiService.disposeSocket();
-    }
-    super.dispose();
-  }
-
-  void _onMove(Move move) async {
-    final gameProvider = context.read<GameProvider>();
-    if (gameProvider.vsComputer) {
-      bool result = gameProvider.makeSquaresMove(move);
+    Future<void> handleComputerMove(BuildContext context, Move move) async {
+      final result = gameProvider.makeSquaresMove(move);
       if (result) {
         await gameProvider.setSquaresState().whenComplete(() {
           if (gameProvider.player == Squares.white) {
             gameProvider.pauseWhitesTimer();
-            startTimer(isWhiteTimer: false, onNewGame: () {});
+            startTimer(context, isWhiteTimer: false, onNewGame: () {});
           } else {
             gameProvider.pauseBlacksTimer();
-            startTimer(isWhiteTimer: true, onNewGame: () {});
+            startTimer(context, isWhiteTimer: true, onNewGame: () {});
           }
         });
-        if (gameProvider.state.state == PlayState.theirTurn &&
-            !gameProvider.aiThinking) {
+
+        if (gameProvider.state.state == PlayState.theirTurn && !gameProvider.aiThinking) {
           gameProvider.setAiThinking(true);
-          await Future.delayed(
-            Duration(milliseconds: Random().nextInt(2000) + 500),
-          );
+          await Future.delayed(Duration(milliseconds: Random().nextInt(2000) + 500));
           gameProvider.game.makeRandomMove();
           gameProvider.setAiThinking(false);
           await gameProvider.setSquaresState().whenComplete(() {
             if (gameProvider.player == Squares.white) {
               gameProvider.pauseBlacksTimer();
-              startTimer(isWhiteTimer: true, onNewGame: () {});
+              startTimer(context, isWhiteTimer: true, onNewGame: () {});
             } else {
               gameProvider.pauseWhitesTimer();
-              startTimer(isWhiteTimer: false, onNewGame: () {});
+              startTimer(context, isWhiteTimer: false, onNewGame: () {});
             }
           });
         }
       }
-    } else {
-      // PvP mode: Emit move to server
-      bool result = gameProvider.makeSquaresMove(move);
+    }
+
+    Future<void> handleMultiplayerMove(BuildContext context, Move move) async {
+      final result = gameProvider.makeSquaresMove(move);
       if (result) {
         final newFen = gameProvider.state.board.fen;
         ApiService.socket?.emit('move', {
@@ -94,46 +72,176 @@ class _GameScreenState extends State<GameScreen> {
         await gameProvider.setSquaresState();
         if (gameProvider.player == Squares.white) {
           gameProvider.pauseWhitesTimer();
-          startTimer(isWhiteTimer: false, onNewGame: () {});
+          startTimer(context, isWhiteTimer: false, onNewGame: () {});
         } else {
           gameProvider.pauseBlacksTimer();
-          startTimer(isWhiteTimer: true, onNewGame: () {});
+          startTimer(context, isWhiteTimer: true, onNewGame: () {});
         }
       }
-    }
-    await Future.delayed(const Duration(milliseconds: 500));
-    checkGameOverListener();
   }
 
-  void checkGameOverListener() {
-    final gameProvider = context.read<GameProvider>();
+    void checkGameOverListener(BuildContext context) {
     gameProvider.gameOverListener(
       context: context,
       onNewGame: () {
         if (!gameProvider.vsComputer) {
-          gameProvider.offerRematch();
+          gameProvider.rematch(context);
         }
       },
     );
   }
 
-  void startTimer({required bool isWhiteTimer, required Function onNewGame}) {
-    final gameProvider = context.read<GameProvider>();
-    if (isWhiteTimer) {
-      gameProvider.startWhitesTime(context: context, onNewGame: onNewGame);
-    } else {
-      gameProvider.startBlacksTime(context: context, onNewGame: onNewGame);
+    // Handle move logic
+    Future<void> onMove(Move move) async {
+      if (gameProvider.vsComputer) {
+        await handleComputerMove(context, move);
+      } else {
+        await handleMultiplayerMove(context, move);
+      }
+      
+      await Future.delayed(const Duration(milliseconds: 500));
+      checkGameOverListener(context);
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final gameProvider = context.watch<GameProvider>();
-    final authProvider = context.watch<AuthProvider>();
-    final user = authProvider.user;
+    // Show exit confirmation dialog
+    Future<bool?> showExitConfirmDialog(BuildContext context) {
+      return showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Leave Game?', textAlign: TextAlign.center),
+          content: const Text(
+            'Are you sure to leave this game?',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Yes'),
+            ),
+          ],
+        ),
+      );
+    }
 
+    // Handle exit
+    Future<void> handleExit(BuildContext context) async {
+      final shouldExit = await showExitConfirmDialog(context);
+      if (shouldExit == true && context.mounted) {
+        if (gameProvider.vsComputer) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/homeScreen',
+            (route) => false,
+          );
+    } else {
+          await gameProvider.leaveGame(context);
+          if (context.mounted) {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/homeScreen',
+              (route) => false,
+            );
+          }
+        }
+      }
+    }
+
+    // Show draw offer dialog
+    void showDrawOfferDialog(BuildContext context) {
+      if (gameProvider.drawOfferedByOpponent) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Draw Offered'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  gameProvider.acceptDraw(context);
+                },
+                child: const Text('Accept'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  gameProvider.declineDraw();
+                },
+                child: const Text('Decline'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    // Show rematch offer dialog
+    void showRematchOfferDialog(BuildContext context) {
+      if (gameProvider.rematchOffered) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Rematch Offered'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  gameProvider.acceptRematch();
+                },
+                child: const Text('Accept'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  gameProvider.declineRematch();
+                },
+                child: const Text('Decline'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    // Initialize game on first build
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        gameProvider.resetGame(newGame: false, context: context);
+        if (gameProvider.vsComputer) {
+          gameProvider.initStockfish();
+        } else {
+          gameProvider.initSocketListeners(context);
+          startTimer(context, isWhiteTimer: true, onNewGame: () {});
+        }
+      });
+
+      // Cleanup on dispose
+      return () {
+        gameProvider.pauseWhitesTimer();
+        gameProvider.pauseBlacksTimer();
+        if (!gameProvider.vsComputer) {
+          ApiService.disposeSocket();
+        }
+      };
+    }, []);
+
+    // Show dialogs when needed
+    useEffect(() {
+      if (gameProvider.drawOfferedByOpponent) {
+        showDrawOfferDialog(context);
+      }
+      if (gameProvider.rematchOffered) {
+        showRematchOfferDialog(context);
+      }
+      return null;
+    }, [gameProvider.drawOfferedByOpponent, gameProvider.rematchOffered]);
+
+    // Return waiting lobby if not playing and not vs computer
     if (!gameProvider.isPlaying && !gameProvider.vsComputer) {
-      return WaitingLobby(gameId: gameProvider.gameId);
+      return const WaitingLobby();
     }
 
     return Scaffold(
@@ -143,31 +251,49 @@ class _GameScreenState extends State<GameScreen> {
         title: const Text('Chess Game'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => _showExitConfirmDialog(context),
+          onPressed: () => handleExit(context),
         ),
+        actions: [
+          // Draw and rematch buttons for multiplayer
+    if (!gameProvider.vsComputer) ...[
+      ElevatedButton(
+        onPressed: gameProvider.drawOffered ? null : () => gameProvider.offerDraw(context),
+        child: const Text('Offer Draw'),
+      ),
+      const SizedBox(width: 10),
+      if (gameProvider.drawOfferedByOpponent)
+        ElevatedButton(
+          onPressed: () => gameProvider.acceptDraw(context),
+          child: const Text('Accept Draw'),
+        ),
+    ],
+  ],
       ),
       body: Column(
         children: [
-          // Opponent info
+          // Opponent info (for multiplayer) or AI info (for computer)
           ListTile(
             leading: CircleAvatar(
               radius: 25,
-              backgroundImage: NetworkImage(gameProvider.opponentImage),
+              backgroundImage: gameProvider.vsComputer 
+                  ? const AssetImage('assets/images/computer.png')
+                  : NetworkImage(gameProvider.opponentImage),
               backgroundColor: const Color(0xFF3A3A6A),
             ),
             title: Text(
-              gameProvider.opponentName,
+              gameProvider.vsComputer ? 'Computer' : gameProvider.opponentName,
               style: const TextStyle(color: Colors.white),
             ),
             subtitle: Text(
-              'Rating: ${gameProvider.opponentRating}',
+              gameProvider.vsComputer 
+                  ? 'AI Level: ${gameProvider.gameLevel}'
+                  : 'Rating: ${gameProvider.opponentRating}',
               style: const TextStyle(color: Colors.grey),
             ),
             trailing: Text(
               (gameProvider.isHumanWhite
-                      ? gameProvider.blacksTimer
-                      : gameProvider.whitesTimer)
-                  as String,
+                      ? gameProvider.blacksTime.inMinutes.toString()
+                      : gameProvider.whitesTime.inMinutes.toString()) + ' min',
               style: const TextStyle(fontSize: 16, color: Colors.white),
             ),
             tileColor: const Color(0xFF3A3A6A),
@@ -175,15 +301,24 @@ class _GameScreenState extends State<GameScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
           ),
+
           // Chessboard
           Expanded(
             child: BoardController(
               state: gameProvider.state.board,
               playState: gameProvider.state.state,
               pieceSet: PieceSet.merida(),
-              theme: blackWhiteTheme,
+              theme: const BoardTheme(
+                lightSquare: Colors.white,
+                darkSquare: Color.fromARGB(255, 194, 194, 194),
+                check: Colors.red,
+                checkmate: Color.fromARGB(255, 222, 119, 8),
+                previous: Color.fromARGB(255, 145, 193, 233),
+                selected: Color.fromARGB(255, 88, 196, 110),
+                premove: Color.fromARGB(255, 124, 124, 124),
+              ),
               moves: gameProvider.state.moves,
-              onMove: _onMove,
+              onMove: onMove,
               markerTheme: MarkerTheme(
                 empty: MarkerTheme.dot,
                 piece: MarkerTheme.corners(),
@@ -191,6 +326,7 @@ class _GameScreenState extends State<GameScreen> {
               promotionBehaviour: PromotionBehaviour.autoPremove,
             ),
           ),
+
           // User info
           ListTile(
             leading: CircleAvatar(
@@ -210,9 +346,8 @@ class _GameScreenState extends State<GameScreen> {
             ),
             trailing: Text(
               (gameProvider.isHumanWhite
-                      ? gameProvider.whitesTimer
-                      : gameProvider.blacksTimer)
-                  as String,
+                      ? gameProvider.whitesTime.inMinutes.toString()
+                      : gameProvider.blacksTime.inMinutes.toString()) + ' min',
               style: const TextStyle(fontSize: 16, color: Colors.white),
             ),
             tileColor: const Color(0xFF3A3A6A),
@@ -224,318 +359,4 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
-
-  Future<bool?> _showExitConfirmDialog(BuildContext context) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Leave Game?', textAlign: TextAlign.center),
-        content: const Text(
-          'Are you sure to leave this game?',
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Yes'),
-          ),
-        ],
-      ),
-    );
-  }
 }
-
-
-
-
-// import 'dart:math';
-// import 'package:flutter/material.dart';
-// import 'package:flutter_chess/constants.dart';
-// import 'package:flutter_chess/helper/helper_methods.dart';
-// import 'package:flutter_chess/providers/auth_provider.dart';
-// import 'package:flutter_chess/providers/game_provider.dart';
-// import 'package:flutter_chess/service/assets_manager.dart';
-// import 'package:flutter_chess/services/api_service.dart';
-// import 'package:provider/provider.dart';
-// import 'package:squares/squares.dart';
-
-// class GameScreen extends StatefulWidget {
-//   const GameScreen({super.key});
-
-//   @override
-//   State<GameScreen> createState() => _GameScreenState();
-// }
-
-// final BoardTheme blackWhiteTheme = BoardTheme(
-//   lightSquare: Colors.white,
-//   darkSquare: const Color.fromARGB(255, 194, 194, 194),
-//   check: Colors.red,
-//   checkmate: const Color.fromARGB(255, 222, 119, 8),
-//   previous: const Color.fromARGB(255, 145, 193, 233),
-//   selected: const Color.fromARGB(255, 88, 196, 110),
-//   premove: const Color.fromARGB(255, 124, 124, 124),
-// );
-
-// class _GameScreenState extends State<GameScreen> {
-//   @override
-//   void initState() {
-//     super.initState();
-//     final gameProvider = context.read<GameProvider>();
-//     gameProvider.resetGame(newGame: false, context: context);
-//   }
-
-//   @override
-//   void dispose() {
-//     context.read<GameProvider>().pauseWhitesTimer();
-//     context.read<GameProvider>().pauseBlacksTimer();
-//     if (!context.read<GameProvider>().vsComputer) {
-//       ApiService.disposeSocket();
-//     }
-//     super.dispose();
-//   }
-
-//   void _onMove(Move move) async {
-//   final gameProvider = context.read<GameProvider>();
-//   if (gameProvider.vsComputer) {
-//     bool result = gameProvider.makeSquaresMove(move);
-//     if (result) {
-//       await gameProvider.setSquaresState().whenComplete(() {
-//         if (gameProvider.player == Squares.white) {
-//           gameProvider.pauseWhitesTimer();
-//           startTimer(isWhiteTimer: false, onNewGame: () {});
-//         } else {
-//           gameProvider.pauseBlacksTimer();
-//           startTimer(isWhiteTimer: true, onNewGame: () {});
-//         }
-//       });
-//       if (gameProvider.state.state == PlayState.theirTurn && !gameProvider.aiThinking) {
-//         gameProvider.setAiThinking(true);
-//         await Future.delayed(Duration(milliseconds: Random().nextInt(2000) + 500));
-//         gameProvider.game.makeRandomMove();
-//         gameProvider.setAiThinking(false);
-//         await gameProvider.setSquaresState().whenComplete(() {
-//           if (gameProvider.player == Squares.white) {
-//             gameProvider.pauseBlacksTimer();
-//             startTimer(isWhiteTimer: true, onNewGame: () {});
-//           } else {
-//             gameProvider.pauseWhitesTimer();
-//             startTimer(isWhiteTimer: false, onNewGame: () {});
-//           }
-//         });
-//       }
-//     }
-//   } else {
-//     await gameProvider.playMove(context: context, move: move);
-//   }
-//   await Future.delayed(const Duration(milliseconds: 500));
-//   checkGameOverListener();
-// }
-
-//   void checkGameOverListener() {
-//     final gameProvider = context.read<GameProvider>();
-//     gameProvider.gameOverListener(context: context, onNewGame: () {});
-//   }
-
-//   void startTimer({required bool isWhiteTimer, required Function onNewGame}) {
-//     final gameProvider = context.read<GameProvider>();
-//     if (isWhiteTimer) {
-//       gameProvider.startWhitesTime(context: context, onNewGame: onNewGame);
-//     } else {
-//       gameProvider.startBlacksTime(context: context, onNewGame: onNewGame);
-//     }
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     final gameProvider = context.read<GameProvider>();
-//     final authProvider = context.read<AuthProvider>();
-//     final user = authProvider.user;
-//     if (!gameProvider.vsComputer) {
-//     if (gameProvider.drawOffered) {
-//       showDialog(
-//         context: context,
-//         builder: (_) => AlertDialog(
-//           title: const Text('Draw Offered'),
-//           actions: [
-//             TextButton(onPressed: gameProvider.acceptDraw, child: const Text('Accept')),
-//             TextButton(onPressed: gameProvider.declineDraw, child: const Text('Decline')),
-//           ],
-//         ),
-//       );
-//     }
-//     if (gameProvider.rematchOffered) {
-//       showDialog(
-//         context: context,
-//         builder: (_) => AlertDialog(
-//           title: const Text('Rematch Offered'),
-//           actions: [
-//             TextButton(onPressed: gameProvider.acceptRematch, child: const Text('Accept')),
-//             TextButton(onPressed: () {}, child: const Text('Decline')),
-//           ],
-//         ),
-//       );
-//     }
-//   }
-//     return WillPopScope(
-//       onWillPop: () async {
-//         bool? leave = await _showExitConfirmDialog(context);
-//         if (leave != null && leave) {
-//           gameProvider.pauseWhitesTimer();
-//           gameProvider.pauseBlacksTimer();
-//           if (!gameProvider.vsComputer) {
-//             ApiService.socket?.emit('resign', {
-//               'gameId': gameProvider.gameId,
-//               'userId': user?.uid,
-//             });
-//             ApiService.disposeSocket();
-//           }
-//           await Future.delayed(const Duration(milliseconds: 200));
-//           if (context.mounted) {
-//             Navigator.pushNamedAndRemoveUntil(
-//               context,
-//               Constants.homeScreen,
-//               (route) => false,
-//             );
-//           }
-//         }
-//         return false;
-//       },
-//       child: Scaffold(
-//         appBar: AppBar(
-//           backgroundColor: const Color(0xFF2A2A5A),
-//           title: const Text(
-//             'ChessBoard',
-//             style: TextStyle(color: Colors.white),
-//           ),
-//           actions: [
-//             IconButton(
-//               onPressed: () {
-//                 gameProvider.resetGame(newGame: true, context: context);
-//               },
-//               icon: const Icon(Icons.refresh, color: Colors.white),
-//             ),
-//             IconButton(
-//               onPressed: () => gameProvider.flipTheBoard(),
-//               icon: const Icon(Icons.rotate_left, color: Colors.white),
-//             ),
-//           ],
-//         ),
-//         body: Consumer<GameProvider>(
-//           builder: (context, value, child) {
-//             String whitesTimer = getTimerToDisplay(
-//               gameProvider: gameProvider,
-//               isUser: gameProvider.player == Squares.white,
-//             );
-//             String blacksTimer = getTimerToDisplay(
-//               gameProvider: gameProvider,
-//               isUser: gameProvider.player == Squares.black,
-//             );
-//             return Center(
-//               child: Column(
-//                 children: [
-//                   const SizedBox(height: 20),
-//                   ListTile(
-//                     leading: CircleAvatar(
-//                       radius: 25,
-//                       backgroundImage: gameProvider.vsComputer
-//                           ? AssetImage(AssetsManager.user2Icon)
-//                           : NetworkImage(gameProvider.opponentImage.isEmpty
-//                               ? AssetsManager.user2Icon
-//                               : gameProvider.opponentImage),
-//                       backgroundColor: const Color(0xFF3A3A6A),
-//                     ),
-//                     title: Text(
-//                       gameProvider.vsComputer ? 'Computer' : gameProvider.opponentName.isEmpty ? 'Opponent' : gameProvider.opponentName,
-//                       style: const TextStyle(color: Colors.white),
-//                     ),
-//                     subtitle: Text(
-//                       'Rating: ${gameProvider.vsComputer ? 3000 : gameProvider.opponentRating}',
-//                       style: const TextStyle(color: Colors.grey),
-//                     ),
-//                     trailing: Text(
-//                       gameProvider.isHumanWhite ? blacksTimer : whitesTimer,
-//                       style: const TextStyle(fontSize: 16, color: Colors.white),
-//                     ),
-//                     tileColor: const Color(0xFF3A3A6A),
-//                     shape: RoundedRectangleBorder(
-//                       borderRadius: BorderRadius.circular(12),
-//                     ),
-//                   ),
-//                   Padding(
-//                     padding: const EdgeInsets.all(4.0),
-//                     child: BoardController(
-//                       state: gameProvider.flipBoard
-//                           ? gameProvider.state.board.flipped()
-//                           : gameProvider.state.board,
-//                       playState: gameProvider.state.state,
-//                       pieceSet: PieceSet.merida(),
-//                       theme: blackWhiteTheme,
-//                       moves: gameProvider.state.moves,
-//                       onMove: _onMove,
-//                       onPremove: _onMove,
-//                       markerTheme: MarkerTheme(
-//                         empty: MarkerTheme.dot,
-//                         piece: MarkerTheme.corners(),
-//                       ),
-//                       promotionBehaviour: PromotionBehaviour.autoPremove,
-//                     ),
-//                   ),
-//                   ListTile(
-//                     leading: CircleAvatar(
-//                       radius: 25,
-//                       backgroundImage: NetworkImage(user?.image ?? AssetsManager.userIcon),
-//                       backgroundColor: const Color(0xFF3A3A6A),
-//                     ),
-//                     title: Text(
-//                       user?.username ?? 'You',
-//                       style: const TextStyle(color: Colors.white),
-//                     ),
-//                     subtitle: Text(
-//                       'Rating: ${user?.playerRating ?? 1200}',
-//                       style: const TextStyle(color: Colors.grey),
-//                     ),
-//                     trailing: Text(
-//                       gameProvider.isHumanWhite ? whitesTimer : blacksTimer,
-//                       style: const TextStyle(fontSize: 16, color: Colors.white),
-//                     ),
-//                     tileColor: const Color(0xFF3A3A6A),
-//                     shape: RoundedRectangleBorder(
-//                       borderRadius: BorderRadius.circular(12),
-//                     ),
-//                   ),
-//                 ],
-//               ),
-//             );
-//           },
-//         ),
-//       ),
-//     );
-//   }
-
-//   Future<bool?> _showExitConfirmDialog(BuildContext context) {
-//     return showDialog<bool>(
-//       context: context,
-//       builder: (context) => AlertDialog(
-//         title: const Text('Leave Game?', textAlign: TextAlign.center),
-//         content: const Text(
-//           'Are you sure to leave this game?',
-//           textAlign: TextAlign.center,
-//         ),
-//         actions: [
-//           TextButton(
-//             onPressed: () => Navigator.of(context).pop(false),
-//             child: const Text('Cancel'),
-//           ),
-//           TextButton(
-//             onPressed: () => Navigator.of(context).pop(true),
-//             child: const Text('Yes'),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }

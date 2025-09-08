@@ -1,4 +1,5 @@
 class UCICommands {
+  static const String uci = 'uci';
   static const String isReady = 'isready';
   static const String goMoveTime = 'go movetime';
   static const String goInfinite = 'go infinite';

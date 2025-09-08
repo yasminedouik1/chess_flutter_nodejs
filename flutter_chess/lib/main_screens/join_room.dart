@@ -47,13 +47,19 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
       if (response.statusCode == 200) {
         final gameId = data['gameId'];
         ApiService.joinGameRoom(gameId);
-        context.read<GameProvider>().gameId = gameId;
-        Navigator.pushNamed(context, Constants.gameScreen);
+        if (context.mounted) {
+          context.read<GameProvider>().gameId = gameId;
+          Navigator.pushNamed(context, Constants.gameScreen);
+        }
       } else {
-        showSnackBar(context: context, content: data['message'] ?? 'Failed to join game');
+        if (context.mounted) {
+          showSnackBar(context: context, content: data['message'] ?? 'Failed to join game');
+        }
       }
     } catch (e) {
-      showSnackBar(context: context, content: 'Error: $e');
+      if (context.mounted) {
+        showSnackBar(context: context, content: 'Error: $e');
+      }
     }
   }
 

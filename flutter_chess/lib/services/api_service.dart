@@ -173,72 +173,63 @@ class ApiService {
 
   // PvP Game Methods
 
-  static Future<String> createGame({
+ static Future<Map<String, dynamic>> createGame({
     required String token,
+    required String userId,
     required int whiteTime,
     required int blackTime,
-    required int increment,
     required bool isPrivate,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/games'),
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
       },
       body: jsonEncode({
         'whiteTime': whiteTime,
         'blackTime': blackTime,
-        'increment': increment,
         'isPrivate': isPrivate,
       }),
     );
     final data = _safeDecode(response.body);
     if (response.statusCode == 200) {
-      return data['gameId'];
-    } else {
-      throw Exception(data['message'] ?? 'Failed to create game');
+      return data;
     }
+    throw Exception(data['message'] ?? 'Failed to create game');
   }
 
-  static Future<List<dynamic>> getAvailableGames(String token) async {
+ static Future<List<Map<String, dynamic>>> getAvailableGames(String token) async {
     final response = await http.get(
-      Uri.parse('$baseUrl/games/available'),
+      Uri.parse('$baseUrl/games'),
       headers: {'Authorization': 'Bearer $token'},
     );
     final data = _safeDecode(response.body);
     if (response.statusCode == 200) {
-      return data;
-    } else {
-      throw Exception(data['message'] ?? 'Failed to fetch available games');
+      return List<Map<String, dynamic>>.from(data);
     }
+    throw Exception(data['message'] ?? 'Failed to fetch games');
   }
 
   // api_service.dart
   static Future<Map<String, dynamic>> joinGame({
-    required String gameId,
     required String token,
+    required String gameId,
+    required String userId,
   }) async {
-    final userId = await getUserId();
-    if (userId == null) {
-      throw Exception('User not logged in');
-    }
     final response = await http.post(
-      Uri.parse('$baseUrl/games/join'),
+      Uri.parse('$baseUrl/games/join/$gameId'),
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
       },
-      body: jsonEncode({'gameId': gameId, 'userId': userId}),
+      body: jsonEncode({'userId': userId}),
     );
     final data = _safeDecode(response.body);
     if (response.statusCode == 200) {
-      initializeSocket(token);
-      joinGameRoom(gameId);
       return data;
-    } else {
-      throw Exception(data['message'] ?? 'Failed to join game');
     }
+    throw Exception(data['message'] ?? 'Failed to join game');
   }
 
   // Join a game by code
@@ -268,7 +259,7 @@ class ApiService {
     }
   }
 
-  static Future<void> deleteGame({
+  static Future<void> cancelGame({
     required String token,
     required String gameId,
   }) async {
@@ -281,16 +272,16 @@ class ApiService {
     }
   }
 
-  static Future<void> cancelGame({
+  static Future<void> leaveGame({
     required String token,
     required String gameId,
   }) async {
-    final response = await http.delete(
-      Uri.parse('$baseUrl/games/$gameId'),
+    final response = await http.post(
+      Uri.parse('$baseUrl/games/leave/$gameId'),
       headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode != 200) {
-      throw Exception('Failed to cancel game');
+      throw Exception('Failed to leave game');
     }
   }
 
@@ -368,6 +359,27 @@ static void onGameOver(BuildContext context, Function(Map<String, dynamic>) call
 static void onMove(Function(Map<String, dynamic>) callback) {
   socket?.on('move', (data) {
     print("Received move: $data");
+    callback(Map<String, dynamic>.from(data));
+  });
+}
+
+static void onGameDeleted(Function(Map<String, dynamic>) callback) {
+  socket?.on('game_deleted', (data) {
+    print("Game deleted: $data");
+    callback(Map<String, dynamic>.from(data));
+  });
+}
+
+static void onOpponentLeft(Function(Map<String, dynamic>) callback) {
+  socket?.on('opponent_left', (data) {
+    print("Opponent left: $data");
+    callback(Map<String, dynamic>.from(data));
+  });
+}
+
+static void onGameRemoved(Function(Map<String, dynamic>) callback) {
+  socket?.on('game_removed', (data) {
+    print("Game removed from lobby: $data");
     callback(Map<String, dynamic>.from(data));
   });
 }
