@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_chess/constants.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:flutter_chess/services/api_service.dart';
+import 'package:flutter_chess/widgets/widgets.dart';
+import 'package:provider/provider.dart';
 
 class WaitingScreen extends StatefulWidget {
-  const WaitingScreen({super.key});
+  const WaitingScreen({
+    super.key,
+    required this.gameId,
+    required this.joinCode,
+    required this.isPrivate,
+  });
+  final String gameId;
+  final String joinCode;
+  final bool isPrivate;
 
   @override
   State<WaitingScreen> createState() => _WaitingScreenState();
@@ -18,50 +27,46 @@ class _WaitingScreenState extends State<WaitingScreen> {
     super.initState();
     final gameProvider = context.read<GameProvider>();
     final token = context.read<AuthProvider>().token;
-    if (token != null) {
+    if (token != null && widget.gameId.isNotEmpty) {
       ApiService.initializeSocket(token);
-      ApiService.joinGameRoom(gameProvider.gameId);
+      ApiService.joinGameRoom(widget.gameId);
       ApiService.socket?.on('player_joined', (data) {
-        final game = data;
-        gameProvider.setOpponentData(
-          opponentId: game['player2Id'] ?? '',
-          opponentName: game['opponentName'] ?? 'Opponent',
-          opponentImage: game['opponentImage'] ?? '',
-          opponentRating: game['opponentRating'] ?? 1200,
-          whiteTime: game['whiteTime'] ?? 600,
-          blackTime: game['blackTime'] ?? 600,
-          increment: game['increment'] ?? 0,
-        );
-        gameProvider.isHumanWhite = true; // Creator is white
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Player ${game['opponentName'] ?? 'Opponent'} has joined the game!',
-              ),
-              duration: const Duration(seconds: 2),
-            ),
+          gameProvider.setOpponentData(
+            opponentId: data['opponentId'] ?? '',
+            opponentName: data['opponentName'] ?? 'Opponent',
+            opponentImage: data['opponentImage'] ?? '',
+            opponentRating: data['opponentRating'] ?? 1200,
+            whiteTime: data['whiteTime'] ?? 600,
+            blackTime: data['blackTime'] ?? 600,
+            increment: data['increment'] ?? 0,
+            gameId: data['gameId'],
+          );
+          showSnackBar(
+            context: context,
+            content: 'Player ${data['opponentName'] ?? 'Opponent'} has joined!',
           );
           Navigator.pushReplacementNamed(
             context,
             Constants.gameScreen,
             arguments: {
-              'gameId': gameProvider.gameId,
-              'opponentName': game['opponentName'] ?? 'Opponent',
-              'opponentRating': game['opponentRating'] ?? 1200,
+              'gameId': data['gameId'],
+              'opponentName': data['opponentName'] ?? 'Opponent',
+              'opponentRating': data['opponentRating'] ?? 1200,
             },
           );
         }
       });
       ApiService.socket?.on('error', (data) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(data['message'] ?? 'Error joining game')),
-          );
+          showSnackBar(context: context, content: data['message'] ?? 'Error joining game');
         }
       });
+      gameProvider.startWaitingTimer(context: context);
+    } else {
+      showSnackBar(context: context, content: 'Invalid game or user session');
+      Navigator.pushNamedAndRemoveUntil(context, Constants.homeScreen, (route) => false);
     }
-    gameProvider.startWaitingTimer(context: context);
   }
 
   @override
@@ -72,7 +77,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final gameProvider = context.watch();
+    final gameProvider = context.watch<GameProvider>();
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -91,11 +96,11 @@ class _WaitingScreenState extends State<WaitingScreen> {
               'Waiting... (${gameProvider.waitingText})',
               style: const TextStyle(color: Colors.white),
             ),
-            if (gameProvider.isPrivate)
+            if (widget.isPrivate)
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Text(
-                  'Share this code: ${gameProvider.joinCode}',
+                  'Share this code: ${widget.joinCode}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
