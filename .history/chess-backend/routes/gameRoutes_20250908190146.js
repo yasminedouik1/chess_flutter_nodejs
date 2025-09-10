@@ -56,12 +56,7 @@ router.post('/', auth, async (req, res) => {
 
 router.get('/', auth, async (req, res) => {
   try {
-    const games = await Game.find({ 
-      isPrivate: false, 
-      opponentId: null, 
-      isPlaying: false,
-      creatorId: { $ne: req.userId } // Exclude user's own games
-    });
+    const games = await Game.find({ isPrivate: false, opponentId: null, isPlaying: false });
     res.json(games.map(game => ({
       gameId: game.gameId,
       creatorId: game.creatorId,
@@ -77,13 +72,7 @@ router.get('/', auth, async (req, res) => {
 });
 router.get('/available', auth, async (req, res) => {
   try {
-    // Only return games that are waiting for players (not playing, not private, no opponent)
-    const games = await Game.find({ 
-      isPlaying: false, 
-      isPrivate: false,
-      opponentId: null,
-      creatorId: { $ne: req.userId } // Exclude user's own games
-    });
+    const games = await Game.find({ isPlaying: false, isPrivate: false });
     res.json(
       games.map((game) => ({
         gameId: game.gameId,
@@ -370,41 +359,6 @@ router.post('/cancel/:gameId', auth, async (req, res) => {
     res.json({ message: 'Game cancelled' });
   } catch (e) {
     console.error('Error cancelling game:', e);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Leave game endpoint - handles both creator leaving (deletes game) and opponent leaving
-router.post('/leave/:gameId', auth, async (req, res) => {
-  const { gameId } = req.params;
-  const userId = req.user.id;
-  try {
-    const game = await Game.findOne({ gameId });
-    if (!game) {
-      return res.status(404).json({ message: 'Game not found' });
-    }
-
-    if (game.creatorId === userId) {
-      // Creator is leaving - delete the game
-      await Game.deleteOne({ gameId });
-      req.io.to(gameId).emit('game_deleted', { gameId, reason: 'creator_left' });
-      req.io.to('lobby').emit('game_removed', { gameId });
-      res.json({ message: 'Game deleted' });
-    } else if (game.opponentId === userId) {
-      // Opponent is leaving - reset game to waiting state
-      game.opponentId = null;
-      game.opponentName = null;
-      game.opponentImage = null;
-      game.opponentRating = null;
-      game.isPlaying = false;
-      await game.save();
-      req.io.to(gameId).emit('opponent_left', { gameId });
-      res.json({ message: 'Left game' });
-    } else {
-      res.status(403).json({ message: 'Not a participant in this game' });
-    }
-  } catch (e) {
-    console.error('Error leaving game:', e);
     res.status(500).json({ message: 'Server error' });
   }
 });

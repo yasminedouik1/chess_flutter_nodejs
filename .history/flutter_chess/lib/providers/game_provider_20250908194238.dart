@@ -197,7 +197,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   set gameId(String? value) {
-    _gameId = value ?? '';
+    _gameId = value!;
     notifyListeners();
   }
 
@@ -384,25 +384,9 @@ class GameProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      // Clear available games to prevent RangeError
-      _availableGames.clear();
-      notifyListeners();
-      
-      final userId = authProvider.userId;
-      if (userId == null) {
-        showSnackBar(context: context, content: 'User ID not available. Please log in again.');
-        _isLoading = false;
-        notifyListeners();
-        return;
-      }
-      
-      print('Creating game with token: ${token.substring(0, 20)}...');
-      print('Creating game with userId: $userId');
-      print('Creating game with whiteTime: ${whiteTime * 60}, blackTime: ${blackTime * 60}, isPrivate: $isPrivate');
-      
       final response = await ApiService.createGame(
         token: token,
-        userId: userId,
+        userId: authProvider.userId!,
         whiteTime: whiteTime * 60, // Convert to seconds
         blackTime: blackTime * 60,
         isPrivate: isPrivate,
@@ -422,55 +406,15 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> createComputerGame({
-    required BuildContext context,
-    required int whiteTime,
-    required int blackTime,
-    required PlayerColor playerColor,
-  }) async {
-    _isLoading = true;
-    notifyListeners();
-    try {
-      // Clear available games to prevent RangeError
-      _availableGames.clear();
-      notifyListeners();
-      
-      // Set up computer game
-      _gameId = ''; // No game ID needed for computer games
-      _joinCode = '';
-      _isHumanWhite = playerColor == PlayerColor.white;
-      _whitesTime = Duration(minutes: whiteTime);
-      _blacksTime = Duration(minutes: blackTime);
-      _vsComputer = true;
-      _isPlaying = true;
-      
-      // Initialize Stockfish for AI
-      await initStockfish();
-      
-      // Reset game state
-      resetGame(newGame: true, context: context);
-      
-      // Navigate directly to game screen
-      Navigator.pushNamed(context, Constants.gameScreen);
-    } catch (e) {
-      showSnackBar(context: context, content: 'Failed to create computer game: $e');
-    }
-    _isLoading = false;
-    notifyListeners();
-  }
-
   Future<void> fetchAvailableGames(BuildContext context) async {
     final authProvider = context.read<AuthProvider>();
     final token = authProvider.token;
     if (token == null) return;
     try {
-      final games = await ApiService.getAvailableGames(token);
-      _availableGames = games;
+      _availableGames = await ApiService.getAvailableGames(token);
       notifyListeners();
     } catch (e) {
-      _availableGames = []; // Ensure list is never null
       showSnackBar(context: context, content: 'Failed to fetch games: $e');
-      notifyListeners();
     }
   }
 
@@ -782,20 +726,6 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> leaveGame(BuildContext context) async {
-    final token = context.read<AuthProvider>().token;
-    if (token != null && _gameId.isNotEmpty) {
-      try {
-        await ApiService.leaveGame(token: token, gameId: _gameId);
-        _waitingTimer?.cancel();
-        resetPvPFields();
-        notifyListeners();
-      } catch (e) {
-        showSnackBar(context: context, content: 'Failed to leave game: $e');
-      }
-    }
-  }
-
   void resetPvPFields() {
     _gameId = '';
     _opponentId = '';
@@ -879,7 +809,7 @@ class GameProvider extends ChangeNotifier {
       _whitesTime = Duration(seconds: data['whiteTime']);
       _blacksTime = Duration(seconds: data['blackTime']);
       _isPlaying = true;
-      isHumanWhite = data['creatorId'] == context.read<AuthProvider>().userId ? true : false;
+      isHumanWhite = data['creatorId'] == ApiService.getUserId() ? true : false;
       _player = _isHumanWhite ? Squares.white : Squares.black;
       _state = _game.squaresState(_player);
       notifyListeners();
@@ -928,7 +858,7 @@ class GameProvider extends ChangeNotifier {
     ApiService.onGameOver(context, (data) {
       final reason = data['reason'];
       final winnerId = data['winnerId'];
-      final userId = context.read<AuthProvider>().userId;
+      final userId = ApiService.getUserId();
       gameOverDialog(
         context: context,
         timeOut: reason == 'timeout',
@@ -964,53 +894,6 @@ class GameProvider extends ChangeNotifier {
       _isHumanWhite = !_isHumanWhite; // Swap sides
       resetGame(newGame: true, context: context);
       Navigator.pushReplacementNamed(context, Constants.gameScreen);
-      notifyListeners();
-    });
-
-    // Handle game deletion (when creator leaves)
-    ApiService.onGameDeleted((data) {
-      final gameId = data['gameId'];
-      if (gameId == _gameId) {
-        _waitingTimer?.cancel();
-        resetPvPFields();
-        if (context.mounted) {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            Constants.homeScreen,
-            (route) => false,
-          );
-          showSnackBar(
-            context: context,
-            content: 'Game was deleted by creator',
-          );
-        }
-        notifyListeners();
-      }
-    });
-
-    // Handle opponent leaving
-    ApiService.onOpponentLeft((data) {
-      final gameId = data['gameId'];
-      if (gameId == _gameId) {
-        _opponentId = '';
-        _opponentName = '';
-        _opponentImage = '';
-        _opponentRating = 1200;
-        _isPlaying = false;
-        if (context.mounted) {
-          showSnackBar(
-            context: context,
-            content: 'Opponent left the game',
-          );
-        }
-        notifyListeners();
-      }
-    });
-
-    // Handle game removed from lobby (refresh available games)
-    ApiService.onGameRemoved((data) {
-      // Remove the game from available games list
-      _availableGames.removeWhere((game) => game['gameId'] == data['gameId']);
       notifyListeners();
     });
   }

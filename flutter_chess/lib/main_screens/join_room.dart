@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
+import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../constants.dart';
@@ -24,6 +25,8 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
     super.initState();
     // Initialize socket listeners in GameProvider
     context.read<GameProvider>().initSocketListeners(context);
+    // Fetch available games
+    context.read<GameProvider>().fetchAvailableGames(context);
   }
 
   @override
@@ -65,48 +68,144 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final gameProvider = context.watch<GameProvider>();
+    final availableGames = gameProvider.availableGames;
+    
     return Scaffold(
-      backgroundColor: const Color(0xFF2A2A5A),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: size.height * 0.8, maxWidth: 500),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  'Join Game',
-                  style: TextStyle(
-                    fontSize: 28,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+      backgroundColor: const Color(0xFF1F1F3D),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF2A2A5A),
+        title: const Text('Join Game', style: TextStyle(color: Colors.white)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: () => gameProvider.fetchAvailableGames(context),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Manual join section
+            Card(
+              color: const Color(0xFF3A3A6A),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Join by Code',
+                      style: TextStyle(
+                        fontSize: 20,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _idController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Enter Game ID or Join Code',
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        prefixIcon: const Icon(Icons.gamepad, color: Colors.white70),
+                        filled: true,
+                        fillColor: const Color(0xFF2A2A5A),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => joinRoom(context, _idController.text),
+                      child: const Text('Join'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Available games section
+            const Text(
+              'Available Public Games',
+              style: TextStyle(
+                fontSize: 20,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            if (availableGames.isEmpty)
+              const Card(
+                color: Color(0xFF3A3A6A),
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: Text(
+                    'No public games available',
+                    style: TextStyle(color: Colors.white70),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-                const SizedBox(height: 40),
-                TextField(
-                  controller: _idController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Enter Game ID or Join Code',
-                    hintStyle: const TextStyle(color: Colors.white54),
-                    prefixIcon: const Icon(Icons.gamepad, color: Colors.white70),
-                    filled: true,
-                    fillColor: const Color(0xFF3A3A6A),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+              )
+            else
+              ...availableGames.map((game) => Card(
+                color: const Color(0xFF3A3A6A),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFF26A69A),
+                    child: Text(
+                      game['creatorName']?.substring(0, 1).toUpperCase() ?? '?',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
+                  title: Text(
+                    game['creatorName'] ?? 'Unknown Player',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rating: ${game['creatorRating'] ?? 'N/A'}',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      Text(
+                        'Time: ${(game['whiteTime'] ?? 0) ~/ 60} min',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                  trailing: ElevatedButton(
+                    onPressed: () {
+                      final userId = context.read<AuthProvider>().userId;
+                      if (userId != null) {
+                        gameProvider.joinGame(
+                          context,
+                          game['gameId'],
+                          userId,
+                        );
+                      } else {
+                        showSnackBar(context: context, content: 'Please log in to join a game');
+                      }
+                    },
+                    child: const Text('Join'),
+                  ),
                 ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () => joinRoom(context, _idController.text),
-                  child: const Text('Join'),
-                ),
-              ],
-            ),
-          ),
+              )).toList(),
+          ],
         ),
       ),
     );

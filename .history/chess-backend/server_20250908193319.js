@@ -7,15 +7,12 @@ const http = require('http');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { Chess } = require('chess.js'); // For move validation
-const { v4: uuidv4 } = require('uuid');
 
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const gameRoutes = require('./routes/gameRoutes');
-const Game = require('./models/Game');
-const User = require('./models/User');
 
 const app = express();
 const server = http.createServer(app);
@@ -45,11 +42,6 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/games', gameRoutes);
-
-// Helper: Generate join code for private games
-function generateJoinCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString(); // 100000-999999
-}
 
 // Helper: Square index (0-63) to algebraic (e.g., 0 -> 'a8', 12 -> 'd2')
 function indexToSquare(index) {
@@ -308,47 +300,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Disconnect: Handle game cleanup
-  socket.on('disconnect', async () => {
+  // Disconnect: Notify opponent
+  socket.on('disconnect', () => {
     console.log(`User ${socket.userId} disconnected`);
-    try {
-      // Find games where this user is the creator and not playing
-      const creatorGames = await Game.find({ 
-        creatorId: socket.userId, 
-        isPlaying: false 
-      });
-      
-      // Delete creator's waiting games
-      for (const game of creatorGames) {
-        await Game.deleteOne({ gameId: game.gameId });
-        io.to(game.gameId).emit('game_deleted', { 
-          gameId: game.gameId, 
-          reason: 'creator_disconnected' 
-        });
-        io.to('lobby').emit('game_removed', { gameId: game.gameId });
-        console.log(`Deleted game ${game.gameId} - creator disconnected`);
-      }
-      
-      // Find games where this user is the opponent
-      const opponentGames = await Game.find({ 
-        opponentId: socket.userId, 
-        isPlaying: true 
-      });
-      
-      // Reset opponent games to waiting state
-      for (const game of opponentGames) {
-        game.opponentId = null;
-        game.opponentName = null;
-        game.opponentImage = null;
-        game.opponentRating = null;
-        game.isPlaying = false;
-        await game.save();
-        io.to(game.gameId).emit('opponent_left', { gameId: game.gameId });
-        console.log(`Reset game ${game.gameId} - opponent disconnected`);
-      }
-    } catch (err) {
-      console.error('Error handling disconnect:', err);
-    }
+    // Find games and emit 'opponent_left' to room (frontend can handle timeout or end)
+    // Optional: Set timeout to end game if no reconnect
   });
 });
 

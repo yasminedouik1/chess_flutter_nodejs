@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/main_screens/about.dart';
 import 'package:flutter_chess/main_screens/bottom_navbar.dart';
-import 'package:flutter_chess/main_screens/game_setup.dart';
+import 'package:flutter_chess/main_screens/gameTime.dart';
 import 'package:flutter_chess/main_screens/play_vs_friend.dart';
 
 import 'package:flutter_chess/main_screens/settings.dart';
@@ -16,15 +16,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  @override
-  void initState() {
-    super.initState();
-    // Refresh available games when returning to home screen
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<GameProvider>().fetchAvailableGames(context);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final gameProvider = context.read<GameProvider>();
@@ -53,12 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.computer,
                   onTap: () {
                     gameProvider.setVsComputer(value: true);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const GameSetupScreen(),
-                      ),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const GameTimeScreen()));
                   },
                 ),
               ),
@@ -110,15 +96,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.person,
                   onTap: () {
                     gameProvider.setVsComputer(value: false);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const PlayVsFriendScreen(),
-                      ),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const PlayVsFriendScreen()));
                   },
                 ),
               ),
+              // In HomeScreen build method, add to Column or similar
+ElevatedButton(
+  onPressed: () => Navigator.pushNamed(context, Constants.availableGamesScreen),
+  child: const Text('Join Public Game'),
+),
               const SizedBox(height: 10),
               SizedBox(
                 width: 300,
@@ -127,12 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: 'Settings',
                   icon: Icons.settings,
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SettingsScreen(),
-                      ),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
                   },
                 ),
               ),
@@ -144,12 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: 'About',
                   icon: Icons.info,
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AboutScreen(),
-                      ),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutScreen()));
                   },
                 ),
               ),
@@ -162,11 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget buildGameType({
-    required String label,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
+  Widget buildGameType({required String label, required IconData icon, required VoidCallback onTap}) {
     return Card(
       color: const Color(0xFF3A3A6A),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -181,11 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 15),
               Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
                 textAlign: TextAlign.center,
               ),
             ],

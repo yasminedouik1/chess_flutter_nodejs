@@ -180,9 +180,6 @@ class ApiService {
     required int blackTime,
     required bool isPrivate,
   }) async {
-    print('API createGame called with userId: $userId');
-    print('API createGame called with token: ${token.substring(0, 20)}...');
-    
     final response = await http.post(
       Uri.parse('$baseUrl/games'),
       headers: {
@@ -195,10 +192,6 @@ class ApiService {
         'isPrivate': isPrivate,
       }),
     );
-    
-    print('API createGame response status: ${response.statusCode}');
-    print('API createGame response body: ${response.body}');
-    
     final data = _safeDecode(response.body);
     if (response.statusCode == 200) {
       return data;
@@ -206,37 +199,44 @@ class ApiService {
     throw Exception(data['message'] ?? 'Failed to create game');
   }
 
- static Future<List<Map<String, dynamic>>> getAvailableGames(String token) async {
+  static Future<List<dynamic>> getAvailableGames(String token) async {
     final response = await http.get(
-      Uri.parse('$baseUrl/games'),
+      Uri.parse('$baseUrl/games/available'),
       headers: {'Authorization': 'Bearer $token'},
     );
     final data = _safeDecode(response.body);
     if (response.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(data);
+      return data;
+    } else {
+      throw Exception(data['message'] ?? 'Failed to fetch available games');
     }
-    throw Exception(data['message'] ?? 'Failed to fetch games');
   }
 
   // api_service.dart
   static Future<Map<String, dynamic>> joinGame({
-    required String token,
     required String gameId,
-    required String userId,
+    required String token,
   }) async {
+    final userId = await getUserId();
+    if (userId == null) {
+      throw Exception('User not logged in');
+    }
     final response = await http.post(
-      Uri.parse('$baseUrl/games/join/$gameId'),
+      Uri.parse('$baseUrl/games/join'),
       headers: {
-        'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({'userId': userId}),
+      body: jsonEncode({'gameId': gameId, 'userId': userId}),
     );
     final data = _safeDecode(response.body);
     if (response.statusCode == 200) {
+      initializeSocket(token);
+      joinGameRoom(gameId);
       return data;
+    } else {
+      throw Exception(data['message'] ?? 'Failed to join game');
     }
-    throw Exception(data['message'] ?? 'Failed to join game');
   }
 
   // Join a game by code
@@ -266,7 +266,7 @@ class ApiService {
     }
   }
 
-  static Future<void> cancelGame({
+  static Future<void> deleteGame({
     required String token,
     required String gameId,
   }) async {
@@ -279,16 +279,16 @@ class ApiService {
     }
   }
 
-  static Future<void> leaveGame({
+  static Future<void> cancelGame({
     required String token,
     required String gameId,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/games/leave/$gameId'),
+    final response = await http.delete(
+      Uri.parse('$baseUrl/games/$gameId'),
       headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode != 200) {
-      throw Exception('Failed to leave game');
+      throw Exception('Failed to cancel game');
     }
   }
 
@@ -366,27 +366,6 @@ static void onGameOver(BuildContext context, Function(Map<String, dynamic>) call
 static void onMove(Function(Map<String, dynamic>) callback) {
   socket?.on('move', (data) {
     print("Received move: $data");
-    callback(Map<String, dynamic>.from(data));
-  });
-}
-
-static void onGameDeleted(Function(Map<String, dynamic>) callback) {
-  socket?.on('game_deleted', (data) {
-    print("Game deleted: $data");
-    callback(Map<String, dynamic>.from(data));
-  });
-}
-
-static void onOpponentLeft(Function(Map<String, dynamic>) callback) {
-  socket?.on('opponent_left', (data) {
-    print("Opponent left: $data");
-    callback(Map<String, dynamic>.from(data));
-  });
-}
-
-static void onGameRemoved(Function(Map<String, dynamic>) callback) {
-  socket?.on('game_removed', (data) {
-    print("Game removed from lobby: $data");
     callback(Map<String, dynamic>.from(data));
   });
 }

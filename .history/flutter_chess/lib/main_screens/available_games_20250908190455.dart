@@ -31,12 +31,6 @@ class _AvailableGamesScreenState extends State<AvailableGamesScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: () => context.read<GameProvider>().fetchAvailableGames(context),
-          ),
-        ],
       ),
       body: games.isEmpty
           ? const Center(child: Text('No games available', style: TextStyle(color: Colors.white)))
@@ -57,20 +51,11 @@ class _AvailableGamesScreenState extends State<AvailableGamesScreen> {
                       style: const TextStyle(color: Colors.white70),
                     ),
                     trailing: ElevatedButton(
-                      onPressed: () {
-                        final userId = context.read<AuthProvider>().userId;
-                        if (userId != null) {
-                          gameProvider.joinGame(
-                            context,
-                            game['gameId'],
-                            userId,
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Please log in to join a game')),
-                          );
-                        }
-                      },
+                      onPressed: () => gameProvider.joinGame(
+                        context,
+                        game['gameId'],
+                        context.read<AuthProvider>().userId!,
+                      ),
                       child: const Text('Join'),
                     ),
                   ),

@@ -71,10 +71,11 @@ class AuthProvider extends ChangeNotifier {
     final result = await ApiService.login(email: email, password: password);
     if (result['success'] == true) {
       _token = await ApiService.getToken();
+      _userId = await ApiService.getUserId();
       final fetchedUsername =
           await ApiService.getUsername() ?? email; // Fallback to email
       _user = UserModel(
-        uid: await ApiService.getUserId() ?? '',
+        uid: _userId ?? '',
         username: fetchedUsername,
         email: email,
         image: '', // Fetch if needed
@@ -104,6 +105,8 @@ class AuthProvider extends ChangeNotifier {
     await ApiService.logout();
     _user = null;
     _token = null;
+    _userId = null;
+    isLoggedIn = false;
     notifyListeners();
   }
 }

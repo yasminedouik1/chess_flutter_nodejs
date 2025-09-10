@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_chess/constants.dart';
 import 'package:flutter_chess/main_screens/about.dart';
 import 'package:flutter_chess/main_screens/bottom_navbar.dart';
 import 'package:flutter_chess/main_screens/game_setup.dart';
@@ -16,15 +17,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  @override
-  void initState() {
-    super.initState();
-    // Refresh available games when returning to home screen
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<GameProvider>().fetchAvailableGames(context);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final gameProvider = context.read<GameProvider>();
@@ -118,6 +110,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   },
                 ),
+              ),
+              // In HomeScreen build method, add to Column or similar
+              ElevatedButton(
+                onPressed: () => Navigator.pushNamed(
+                  context,
+                  Constants.availableGamesScreen,
+                ),
+                child: const Text('Join Public Game'),
               ),
               const SizedBox(height: 10),
               SizedBox(
