@@ -17,11 +17,16 @@ router.post('/signup', async (req, res) => {
     const user = await User.create({ username, email, password: hashedPassword });
 
     const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '1h' });
-// example Express handler
-res.status(200).json({
-  token,
-  user: { id: user._id.toString(), username: user.username, email: user.email }
-});
+    res.status(200).json({
+      token,
+      user: { 
+        id: user._id.toString(), 
+        username: user.username, 
+        email: user.email,
+        image: user.image,
+        playerRating: user.playerRating 
+      }
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -38,10 +43,17 @@ router.post('/login', async (req, res) => {
     if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
     const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '1h' });
-res.status(200).json({
-  token,
-  user: { id: user._id.toString(), username: user.username, email: user.email }
-});  } catch (err) {
+    res.status(200).json({
+      token,
+      user: { 
+        id: user._id.toString(), 
+        username: user.username, 
+        email: user.email,
+        image: user.image,
+        playerRating: user.playerRating 
+      }
+    });
+  } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
