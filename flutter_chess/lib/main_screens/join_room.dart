@@ -1,9 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../constants.dart';
 import '../services/api_service.dart';
@@ -30,6 +27,15 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh available games when returning to this screen
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<GameProvider>().fetchAvailableGames(context);
+    });
+  }
+
+  @override
   void dispose() {
     _idController.dispose();
     super.dispose();
@@ -38,26 +44,20 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
   void joinRoom(BuildContext context, String id) async {
     try {
       final token = await ApiService.getToken();
-      final response = await http.post(
-        Uri.parse('${ApiService.baseUrl}/games/join-by-code'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'joinCode': id}),
+      if (token == null) {
+        showSnackBar(context: context, content: 'Please log in to join a game');
+        return;
+      }
+      
+      final data = await ApiService.joinGameByCode(
+        joinCode: id,
+        token: token,
       );
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 200) {
+      
+      if (context.mounted) {
         final gameId = data['gameId'];
-        ApiService.joinGameRoom(gameId);
-        if (context.mounted) {
-          context.read<GameProvider>().gameId = gameId;
-          Navigator.pushNamed(context, Constants.gameScreen);
-        }
-      } else {
-        if (context.mounted) {
-          showSnackBar(context: context, content: data['message'] ?? 'Failed to join game');
-        }
+        context.read<GameProvider>().gameId = gameId;
+        Navigator.pushNamed(context, Constants.gameScreen);
       }
     } catch (e) {
       if (context.mounted) {
@@ -113,7 +113,7 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                       controller: _idController,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        hintText: 'Enter Game ID or Join Code',
+                        hintText: 'Enter 6-digit Join Code',
                         hintStyle: const TextStyle(color: Colors.white54),
                         prefixIcon: const Icon(Icons.gamepad, color: Colors.white70),
                         filled: true,
@@ -123,6 +123,8 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                           borderSide: BorderSide.none,
                         ),
                       ),
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
                     ),
                     const SizedBox(height: 16),
                     ElevatedButton(

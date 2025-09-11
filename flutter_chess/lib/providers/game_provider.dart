@@ -413,6 +413,12 @@ class GameProvider extends ChangeNotifier {
       _whitesTime = Duration(seconds: whiteTime * 60);
       _blacksTime = Duration(seconds: blackTime * 60);
       _vsComputer = false;
+      _isPlaying = false; // Game is created but not yet playing
+      print('Game created successfully with ID: $_gameId, joinCode: $_joinCode');
+      
+      // Initialize socket and join the game room for the creator
+      ApiService.initializeSocket(token);
+      ApiService.joinGameRoom(_gameId);
       initSocketListeners(context);
       Navigator.pushNamed(context, Constants.waitingLobby);
     } catch (e) {
@@ -486,11 +492,14 @@ class GameProvider extends ChangeNotifier {
       return;
     }
     try {
+      print('Joining game with gameId: $gameId, userId: $userId');
       final gameData = await ApiService.joinGame(
         token: token,
         gameId: gameId,
         userId: userId,
       );
+      print('Join game response: $gameData');
+      
       _gameId = gameData['gameId'];
       _opponentId = gameData['creatorId'];
       _opponentName = gameData['creatorName'];
@@ -499,9 +508,17 @@ class GameProvider extends ChangeNotifier {
       _whitesTime = Duration(seconds: gameData['whiteTime']);
       _blacksTime = Duration(seconds: gameData['blackTime']);
       _isHumanWhite = false; // Joiner is black
-      initSocketListeners(context);
-      Navigator.pushNamed(context, Constants.gameScreen);
+      _player = Squares.black;
+      _isPlaying = true;
+      
+      // Initialize socket and join the game room
+      ApiService.initializeSocket(token);
+      ApiService.joinGameRoom(_gameId);
+      
+      // Don't navigate here - wait for the socket event to handle navigation
+      notifyListeners();
     } catch (e) {
+      print('Error joining game: $e');
       showSnackBar(context: context, content: 'Failed to join game: $e');
     }
   }
@@ -770,34 +787,76 @@ class GameProvider extends ChangeNotifier {
 
   Future<void> cancelGame(BuildContext context) async {
     final token = context.read<AuthProvider>().token;
+    print('Cancel game - token: ${token != null ? 'present' : 'null'}');
+    print('Cancel game - gameId: $_gameId');
+    print('Cancel game - isPlaying: $_isPlaying');
+    
     if (token != null && _gameId.isNotEmpty && !_isPlaying) {
       try {
+        print('Attempting to cancel game with ID: $_gameId');
         await ApiService.cancelGame(token: token, gameId: _gameId);
         _waitingTimer?.cancel();
-        _gameId = '';
+        resetPvPFields(); // Use resetPvPFields to ensure complete cleanup
         notifyListeners();
+        print('Game cancelled successfully');
       } catch (e) {
+        print('Error cancelling game: $e');
+        // Even if cancel fails, clean up local state to allow new game creation
+        _waitingTimer?.cancel();
+        resetPvPFields();
+        notifyListeners();
         showSnackBar(context: context, content: 'Failed to cancel game: $e');
       }
+    } else {
+      print('Cannot cancel game - missing requirements');
+      if (token == null) print('  - Token is null');
+      if (_gameId.isEmpty) print('  - Game ID is empty');
+      if (_isPlaying) print('  - Game is already playing');
+      
+      // Clean up local state even if we can't cancel on server
+      _waitingTimer?.cancel();
+      resetPvPFields();
+      notifyListeners();
     }
   }
 
   Future<void> leaveGame(BuildContext context) async {
     final token = context.read<AuthProvider>().token;
+    print('Leave game - token: ${token != null ? 'present' : 'null'}');
+    print('Leave game - gameId: $_gameId');
+    
     if (token != null && _gameId.isNotEmpty) {
       try {
-        await ApiService.leaveGame(token: token, gameId: _gameId);
+        print('Attempting to leave/cancel game with ID: $_gameId');
+        // Cancel the game (delete it) when leaving the waiting lobby
+        await ApiService.cancelGame(token: token, gameId: _gameId);
         _waitingTimer?.cancel();
         resetPvPFields();
         notifyListeners();
+        print('Game left/cancelled successfully');
       } catch (e) {
+        print('Error leaving game: $e');
+        // Even if leave fails, clean up local state
+        _waitingTimer?.cancel();
+        resetPvPFields();
+        notifyListeners();
         showSnackBar(context: context, content: 'Failed to leave game: $e');
       }
+    } else {
+      print('Cannot leave game - missing requirements');
+      if (token == null) print('  - Token is null');
+      if (_gameId.isEmpty) print('  - Game ID is empty');
+      
+      // Clean up local state even if we can't leave on server
+      _waitingTimer?.cancel();
+      resetPvPFields();
+      notifyListeners();
     }
   }
 
   void resetPvPFields() {
     _gameId = '';
+    _joinCode = '';
     _opponentId = '';
     _opponentName = '';
     _opponentImage = '';
@@ -805,6 +864,7 @@ class GameProvider extends ChangeNotifier {
     _drawOffered = false;
     _rematchOffered = false;
     _isPlaying = false;
+    print('PvP fields reset - gameId: $_gameId, joinCode: $_joinCode');
   }
 
   void offerDraw(BuildContext context) {
@@ -872,6 +932,7 @@ class GameProvider extends ChangeNotifier {
 
   void initSocketListeners(BuildContext context) {
     ApiService.onOpponentJoined(context, (data) {
+      print('Opponent joined - data: $data');
       _gameId = data['gameId'];
       _opponentName = data['opponentName'];
       _opponentImage = data['opponentImage'];
@@ -882,6 +943,15 @@ class GameProvider extends ChangeNotifier {
       isHumanWhite = data['creatorId'] == context.read<AuthProvider>().userId ? true : false;
       _player = _isHumanWhite ? Squares.white : Squares.black;
       _state = _game.squaresState(_player);
+      
+      // Navigate both players to the game screen
+      if (context.mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          Constants.gameScreen,
+          (route) => false,
+        );
+      }
       notifyListeners();
     });
 

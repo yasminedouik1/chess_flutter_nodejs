@@ -24,16 +24,31 @@ function generateJoinCode() {
 
 
 router.post('/', auth, async (req, res) => {
-  const { whiteTime, blackTime, isPrivate } = req.body;
+  const { whiteTime, blackTime, isPrivate, joinCode } = req.body;
   try {
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
-    let joinCode = isPrivate ? generateJoinCode() : null;
+    
+    let finalJoinCode = null;
+    
+    // For private games, use the provided join code or generate one
     if (isPrivate) {
-      while (await Game.findOne({ joinCode })) {
-        joinCode = generateJoinCode();
+      if (joinCode && /^\d{6}$/.test(joinCode)) {
+        // Check if join code is already in use
+        const existingGame = await Game.findOne({ joinCode });
+        if (existingGame) {
+          return res.status(400).json({ message: 'Join code already in use' });
+        }
+        finalJoinCode = joinCode;
+      } else {
+        // Generate a new join code
+        finalJoinCode = generateJoinCode();
+        while (await Game.findOne({ joinCode: finalJoinCode })) {
+          finalJoinCode = generateJoinCode();
+        }
       }
     }
+    
     const game = new Game({
       gameId: uuidv4(),
       creatorId: user._id,
@@ -44,11 +59,11 @@ router.post('/', auth, async (req, res) => {
       blackTime,
       increment: 0, // Removed as per request
       isPrivate: isPrivate || false,
-      joinCode,
+      joinCode: finalJoinCode,
     });
     await game.save();
     req.io.emit('new_game_available');
-    res.json({ gameId: game.gameId, joinCode });
+    res.json({ gameId: game.gameId, joinCode: finalJoinCode });
   } catch (e) {
     res.status(500).json({ message: 'Server error: ' + e.message });
   }

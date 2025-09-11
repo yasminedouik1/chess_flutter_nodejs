@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as socket_io;
+import 'package:flutter_chess/utils.dart';
 
 class ApiService {
   static const String baseUrl =
@@ -182,6 +183,25 @@ class ApiService {
   }) async {
     print('API createGame called with userId: $userId');
     print('API createGame called with token: ${token.substring(0, 20)}...');
+    print('API createGame called with isPrivate: $isPrivate');
+    
+    // Only generate join code for private games
+    String? joinCode;
+    if (isPrivate) {
+      joinCode = generateGameCode();
+      print('Generated join code for private game: $joinCode');
+    }
+    
+    final requestBody = {
+      'whiteTime': whiteTime,
+      'blackTime': blackTime,
+      'isPrivate': isPrivate,
+    };
+    
+    // Only include joinCode in request if it's a private game
+    if (isPrivate && joinCode != null) {
+      requestBody['joinCode'] = joinCode;
+    }
     
     final response = await http.post(
       Uri.parse('$baseUrl/games'),
@@ -189,11 +209,7 @@ class ApiService {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
-      body: jsonEncode({
-        'whiteTime': whiteTime,
-        'blackTime': blackTime,
-        'isPrivate': isPrivate,
-      }),
+      body: jsonEncode(requestBody),
     );
     
     print('API createGame response status: ${response.statusCode}');
@@ -201,6 +217,10 @@ class ApiService {
     
     final data = _safeDecode(response.body);
     if (response.statusCode == 200) {
+      // For private games, ensure the response includes the join code
+      if (isPrivate && joinCode != null) {
+        data['joinCode'] = joinCode;
+      }
       return data;
     }
     throw Exception(data['message'] ?? 'Failed to create game');
@@ -270,12 +290,19 @@ class ApiService {
     required String token,
     required String gameId,
   }) async {
-    final response = await http.delete(
-      Uri.parse('$baseUrl/games/$gameId'),
+    print('API cancelGame called with gameId: $gameId');
+    print('API cancelGame called with token: ${token.substring(0, 20)}...');
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/games/cancel/$gameId'),
       headers: {'Authorization': 'Bearer $token'},
     );
+    
+    print('API cancelGame response status: ${response.statusCode}');
+    print('API cancelGame response body: ${response.body}');
+    
     if (response.statusCode != 200) {
-      throw Exception('Failed to cancel game');
+      throw Exception('Failed to cancel game - Status: ${response.statusCode}, Body: ${response.body}');
     }
   }
 
