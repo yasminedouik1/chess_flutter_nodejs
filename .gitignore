@@ -1,0 +1,40 @@
+
+chess_backend/node_modules/
+chess_backend/.env
+chess_backend/*.log
+chess_backend/npm-debug.log*
+chess_backend/yarn-debug.log*
+chess_backend/yarn-error.log*
+chess_backend/.eslintcache
+
+# Dart & Flutter
+flutter_chess/.dart_tool/
+flutter_chess/.packages
+flutter_chess/.flutter-plugins
+flutter_chess/.flutter-plugins-dependencies
+flutter_chess/build/
+flutter_chess/pubspec.lock
+
+# Android
+flutter_chess/android/.gradle/
+flutter_chess/android/app/build/
+flutter_chess/android/local.properties
+
+# iOS
+flutter_chess/ios/Pods/
+flutter_chess/ios/.symlinks/
+flutter_chess/ios/Flutter/Flutter.framework
+flutter_chess/ios/Flutter/Flutter.podspec
+
+# VS Code / IDE
+.vscode/
+*.iml
+*.swp
+.idea/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
