@@ -49,7 +49,7 @@ router.post('/', auth, async (req, res) => {
       }
     }
     
-    const game = new Game({
+    const gameData = {
       gameId: uuidv4(),
       creatorId: user._id,
       creatorName: user.username,
@@ -59,8 +59,14 @@ router.post('/', auth, async (req, res) => {
       blackTime,
       increment: 0, // Removed as per request
       isPrivate: isPrivate || false,
-      joinCode: finalJoinCode,
-    });
+    };
+    
+    // Only include joinCode for private games
+    if (isPrivate && finalJoinCode) {
+      gameData.joinCode = finalJoinCode;
+    }
+    
+    const game = new Game(gameData);
     await game.save();
     req.io.emit('new_game_available');
     res.json({ gameId: game.gameId, joinCode: finalJoinCode });
@@ -192,7 +198,7 @@ router.get('/:gameId', authenticate, async (req, res) => {
 // router.delete('/:gameId', authenticate, async (req, res) => {
 //   const { gameId } = req.params;
 //   try {
-//     const game = await Game.findOne({ gameId, creatorId: req.user.id, isPlaying: false });
+//     const game = await Game.findOne({ gameId, creatorId: req.userId, isPlaying: false });
 //     if (!game) return res.status(400).json({ message: 'Cannot cancel game' });
 //     await Game.deleteOne({ gameId });
 //     req.io.emit('game_cancelled', { gameId });
@@ -272,7 +278,7 @@ router.get('/:gameId', authenticate, async (req, res) => {
 
 router.post('/join/:id', auth, async (req, res) => {
   const { id: gameId } = req.params;
-  const userId = req.user.id;
+  const userId = req.userId;
   try {
     const game = await Game.findOneAndUpdate(
       { gameId, isPlaying: false, isPrivate: false, creatorId: { $ne: userId } },
@@ -322,7 +328,7 @@ router.post('/join/:id', auth, async (req, res) => {
 
 router.post('/join-by-code', auth, async (req, res) => {
   const { joinCode } = req.body;
-  const userId = req.user.id;
+  const userId = req.userId;
   try {
     if (!joinCode || !/^\d{6}$/.test(joinCode)) {
       return res.status(400).json({ message: 'Invalid join code' });
@@ -376,7 +382,7 @@ router.post('/join-by-code', auth, async (req, res) => {
 router.post('/cancel/:gameId', auth, async (req, res) => {
   const { gameId } = req.params;
   try {
-    const game = await Game.findOne({ gameId, creatorId: req.user.id, isPlaying: false });
+    const game = await Game.findOne({ gameId, creatorId: req.userId, isPlaying: false });
     if (!game) {
       return res.status(400).json({ message: 'Cannot cancel game: not found or already started' });
     }
@@ -392,7 +398,7 @@ router.post('/cancel/:gameId', auth, async (req, res) => {
 // Leave game endpoint - handles both creator leaving (deletes game) and opponent leaving
 router.post('/leave/:gameId', auth, async (req, res) => {
   const { gameId } = req.params;
-  const userId = req.user.id;
+  const userId = req.userId;
   try {
     const game = await Game.findOne({ gameId });
     if (!game) {

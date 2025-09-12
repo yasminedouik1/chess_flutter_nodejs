@@ -1,3 +1,564 @@
+this is play_vs_friend.dart :
+
+import 'package:flutter/material.dart';
+import 'package:flutter_chess/main_screens/game_setup.dart';
+import 'package:flutter_chess/main_screens/join_room.dart';
+import 'package:flutter_chess/providers/auth_provider.dart';
+import 'package:provider/provider.dart';
+
+class PlayVsFriendScreen extends StatelessWidget {
+  const PlayVsFriendScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Play vs Friend',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: const Color(0xFF2A2A5A),
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildButtonCard(
+                context: context,
+                label: 'Create Room',
+                icon: Icons.add_circle,
+                onTap: () {
+                  final auth = context.read<AuthProvider>();
+                  if (!auth.isLoggedIn) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please log in to create a game')),
+                    );
+                    return;
+                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const GameSetupScreen()),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              _buildButtonCard(
+                context: context,
+                label: 'Join Room',
+                icon: Icons.group,
+                onTap: () {
+                  final auth = context.read<AuthProvider>();
+                  if (!auth.isLoggedIn) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please log in to join a game')),
+                    );
+                    return;
+                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const JoinRoomScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildButtonCard({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      color: const Color(0xFF3A3A6A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 300,
+          height: 120,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: const Color(0xFF26A69A), size: 35),
+              const SizedBox(height: 15),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+/////////////////////////////
+this is waiting_screen.dart :
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/game_provider.dart';
+import '../constants.dart';
+
+class WaitingLobby extends StatefulWidget {
+  const WaitingLobby({Key? key}) : super(key: key);
+
+  @override
+  State<WaitingLobby> createState() => _WaitingLobbyState();
+}
+
+class _WaitingLobbyState extends State<WaitingLobby> {
+  @override
+  void dispose() {
+    // Cancel the game when the widget is disposed
+    final gameProvider = context.read<GameProvider>();
+    if (gameProvider.gameId.isNotEmpty) {
+      gameProvider.cancelGame(context);
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final gameProvider = context.watch<GameProvider>();
+
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (!didPop) {
+          // User is trying to go back, cancel the game
+          await gameProvider.cancelGame(context);
+          if (context.mounted) {
+            Navigator.pop(context);
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF2A2A5A),
+        body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Waiting for Opponent...',
+              style: TextStyle(
+                fontSize: 24,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (gameProvider.joinCode.isNotEmpty)
+              Text(
+                'Join Code: ${gameProvider.joinCode}',
+                style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            const SizedBox(height: 10),
+            Text(
+              'Share this code with your friend to join the game',
+              style: const TextStyle(fontSize: 14, color: Colors.white60),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 40),
+            const CircularProgressIndicator(),
+            const SizedBox(height: 40),
+            ElevatedButton(
+              onPressed: () async {
+                await gameProvider.cancelGame(context);
+                if (context.mounted) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    Constants.homeScreen,
+                    (route) => false,
+                  );
+                }
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      ),
+      ),
+    );
+  }
+}
+/////////////////////////////
+this is game.dart :
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:flutter_chess/main_screens/waiting_lobby.dart';
+import 'package:flutter_chess/providers/auth_provider.dart';
+import 'package:flutter_chess/providers/game_provider.dart';
+import 'package:flutter_chess/services/assets_manager.dart';
+import 'package:flutter_chess/services/api_service.dart';
+import 'package:provider/provider.dart';
+import 'package:squares/squares.dart';
+
+class GameScreen extends HookWidget {
+  const GameScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Provider access
+    final gameProvider = context.watch<GameProvider>();
+    final authProvider = context.watch<AuthProvider>();
+    final user = authProvider.user;
+
+    // Helper functions
+    void startTimer(BuildContext context, {required bool isWhiteTimer, required Function onNewGame}) {
+      if (isWhiteTimer) {
+        gameProvider.startWhitesTime(context: context, onNewGame: onNewGame);
+    } else {
+        gameProvider.startBlacksTime(context: context, onNewGame: onNewGame);
+      }
+    }
+
+    Future<void> handleComputerMove(BuildContext context, Move move) async {
+      final result = gameProvider.makeSquaresMove(move);
+      if (result) {
+        await gameProvider.setSquaresState().whenComplete(() {
+          if (gameProvider.player == Squares.white) {
+            gameProvider.pauseWhitesTimer();
+            startTimer(context, isWhiteTimer: false, onNewGame: () {});
+          } else {
+            gameProvider.pauseBlacksTimer();
+            startTimer(context, isWhiteTimer: true, onNewGame: () {});
+          }
+        });
+
+        if (gameProvider.state.state == PlayState.theirTurn && !gameProvider.aiThinking) {
+          gameProvider.setAiThinking(true);
+          await Future.delayed(Duration(milliseconds: Random().nextInt(2000) + 500));
+          gameProvider.game.makeRandomMove();
+          gameProvider.setAiThinking(false);
+          await gameProvider.setSquaresState().whenComplete(() {
+            if (gameProvider.player == Squares.white) {
+              gameProvider.pauseBlacksTimer();
+              startTimer(context, isWhiteTimer: true, onNewGame: () {});
+            } else {
+              gameProvider.pauseWhitesTimer();
+              startTimer(context, isWhiteTimer: false, onNewGame: () {});
+            }
+          });
+        }
+      }
+    }
+
+    Future<void> handleMultiplayerMove(BuildContext context, Move move) async {
+      final result = gameProvider.makeSquaresMove(move);
+      if (result) {
+        final newFen = gameProvider.state.board.fen;
+        ApiService.socket?.emit('move', {
+          'gameId': gameProvider.gameId,
+          'move': move.toString(),
+          'isWhite': gameProvider.player == Squares.white,
+          'fen': newFen,
+        });
+        await gameProvider.setSquaresState();
+        if (gameProvider.player == Squares.white) {
+          gameProvider.pauseWhitesTimer();
+          startTimer(context, isWhiteTimer: false, onNewGame: () {});
+        } else {
+          gameProvider.pauseBlacksTimer();
+          startTimer(context, isWhiteTimer: true, onNewGame: () {});
+        }
+      }
+  }
+
+    void checkGameOverListener(BuildContext context) {
+    gameProvider.gameOverListener(
+      context: context,
+      onNewGame: () {
+        if (!gameProvider.vsComputer) {
+          gameProvider.rematch(context);
+        }
+      },
+    );
+  }
+
+    // Handle move logic
+    Future<void> onMove(Move move) async {
+      if (gameProvider.vsComputer) {
+        await handleComputerMove(context, move);
+      } else {
+        await handleMultiplayerMove(context, move);
+      }
+      
+      await Future.delayed(const Duration(milliseconds: 500));
+      checkGameOverListener(context);
+    }
+
+    // Show exit confirmation dialog
+    Future<bool?> showExitConfirmDialog(BuildContext context) {
+      return showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Leave Game?', textAlign: TextAlign.center),
+          content: const Text(
+            'Are you sure to leave this game?',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Yes'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Handle exit
+    Future<void> handleExit(BuildContext context) async {
+      final shouldExit = await showExitConfirmDialog(context);
+      if (shouldExit == true && context.mounted) {
+        if (gameProvider.vsComputer) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/homeScreen',
+            (route) => false,
+          );
+    } else {
+          await gameProvider.leaveGame(context);
+          if (context.mounted) {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/homeScreen',
+              (route) => false,
+            );
+          }
+        }
+      }
+    }
+
+    // Show draw offer dialog
+    void showDrawOfferDialog(BuildContext context) {
+      if (gameProvider.drawOfferedByOpponent) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Draw Offered'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  gameProvider.acceptDraw(context);
+                },
+                child: const Text('Accept'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  gameProvider.declineDraw();
+                },
+                child: const Text('Decline'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    // Show rematch offer dialog
+    void showRematchOfferDialog(BuildContext context) {
+      if (gameProvider.rematchOffered) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Rematch Offered'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  gameProvider.acceptRematch();
+                },
+                child: const Text('Accept'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  gameProvider.declineRematch();
+                },
+                child: const Text('Decline'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    // Initialize game on first build
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        gameProvider.resetGame(newGame: false, context: context);
+        if (gameProvider.vsComputer) {
+          gameProvider.initStockfish();
+        } else {
+          gameProvider.initSocketListeners(context);
+          startTimer(context, isWhiteTimer: true, onNewGame: () {});
+        }
+      });
+
+      // Cleanup on dispose
+      return () {
+        gameProvider.pauseWhitesTimer();
+        gameProvider.pauseBlacksTimer();
+        if (!gameProvider.vsComputer) {
+          ApiService.disposeSocket();
+        }
+      };
+    }, []);
+
+    // Show dialogs when needed
+    useEffect(() {
+      if (gameProvider.drawOfferedByOpponent) {
+        showDrawOfferDialog(context);
+      }
+      if (gameProvider.rematchOffered) {
+        showRematchOfferDialog(context);
+      }
+      return null;
+    }, [gameProvider.drawOfferedByOpponent, gameProvider.rematchOffered]);
+
+    // Return waiting lobby if not playing and not vs computer
+    if (!gameProvider.isPlaying && !gameProvider.vsComputer) {
+      return const WaitingLobby();
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF2A2A5A),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF2A2A5A),
+        title: const Text('Chess Game'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => handleExit(context),
+        ),
+        actions: [
+          // Draw and rematch buttons for multiplayer
+    if (!gameProvider.vsComputer) ...[
+      ElevatedButton(
+        onPressed: gameProvider.drawOffered ? null : () => gameProvider.offerDraw(context),
+        child: const Text('Offer Draw'),
+      ),
+      const SizedBox(width: 10),
+      if (gameProvider.drawOfferedByOpponent)
+        ElevatedButton(
+          onPressed: () => gameProvider.acceptDraw(context),
+          child: const Text('Accept Draw'),
+        ),
+    ],
+  ],
+      ),
+      body: Column(
+        children: [
+          // Opponent info (for multiplayer) or AI info (for computer)
+          ListTile(
+            leading: CircleAvatar(
+              radius: 25,
+              backgroundImage: gameProvider.vsComputer 
+                  ? const AssetImage('assets/images/computer.png')
+                  : NetworkImage(gameProvider.opponentImage),
+              backgroundColor: const Color(0xFF3A3A6A),
+            ),
+            title: Text(
+              gameProvider.vsComputer ? 'Computer' : gameProvider.opponentName,
+              style: const TextStyle(color: Colors.white),
+            ),
+            subtitle: Text(
+              gameProvider.vsComputer 
+                  ? 'AI Level: ${gameProvider.gameLevel}'
+                  : 'Rating: ${gameProvider.opponentRating}',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            trailing: Text(
+              (gameProvider.isHumanWhite
+                      ? gameProvider.blacksTime.inMinutes.toString()
+                      : gameProvider.whitesTime.inMinutes.toString()) + ' min',
+              style: const TextStyle(fontSize: 16, color: Colors.white),
+            ),
+            tileColor: const Color(0xFF3A3A6A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+
+          // Chessboard
+          Expanded(
+            child: BoardController(
+              state: gameProvider.state.board,
+              playState: gameProvider.state.state,
+              pieceSet: PieceSet.merida(),
+              theme: const BoardTheme(
+                lightSquare: Colors.white,
+                darkSquare: Color.fromARGB(255, 194, 194, 194),
+                check: Colors.red,
+                checkmate: Color.fromARGB(255, 222, 119, 8),
+                previous: Color.fromARGB(255, 145, 193, 233),
+                selected: Color.fromARGB(255, 88, 196, 110),
+                premove: Color.fromARGB(255, 124, 124, 124),
+              ),
+              moves: gameProvider.state.moves,
+              onMove: onMove,
+              markerTheme: MarkerTheme(
+                empty: MarkerTheme.dot,
+                piece: MarkerTheme.corners(),
+              ),
+              promotionBehaviour: PromotionBehaviour.autoPremove,
+            ),
+          ),
+
+          // User info
+          ListTile(
+            leading: CircleAvatar(
+              radius: 25,
+              backgroundImage: NetworkImage(
+                user?.image ?? AssetsManager.userIcon,
+              ),
+              backgroundColor: const Color(0xFF3A3A6A),
+            ),
+            title: Text(
+              user?.username ?? 'You',
+              style: const TextStyle(color: Colors.white),
+            ),
+            subtitle: Text(
+              'Rating: ${user?.playerRating ?? 1200}',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            trailing: Text(
+              (gameProvider.isHumanWhite
+                      ? gameProvider.whitesTime.inMinutes.toString()
+                      : gameProvider.blacksTime.inMinutes.toString()) + ' min',
+              style: const TextStyle(fontSize: 16, color: Colors.white),
+            ),
+            tileColor: const Color(0xFF3A3A6A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+/////////////////////////////
+this is game_provider.dart :
 import 'dart:async';
 import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
@@ -193,7 +754,7 @@ class GameProvider extends ChangeNotifier {
     _whitesTime = _savedWhitesTime;
     _blacksTime = _savedBlacksTime;
     if (gameId != null) _gameId = gameId;
-    notifyListeners();
+    notifyListeners(); // Set gameId if provided    notifyListeners();
   }
 
   set gameId(String? value) {
@@ -1125,4 +1686,458 @@ class GameProvider extends ChangeNotifier {
     _stockfish?.dispose();
     super.dispose();
   }
+}
+
+/////////////////////////////
+this is api_service.dart :
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:socket_io_client/socket_io_client.dart' as socket_io;
+import 'package:flutter_chess/utils.dart';
+
+class ApiService {
+  static const String baseUrl =
+      'http://10.0.2.2:5000/api'; // Adjust if needed (emulator localhost)
+  static socket_io.Socket? socket;
+
+  // Save JWT and user data
+  static Future<void> saveUser(
+    String userId,
+    String token,
+    String username,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('jwt_token', token);
+    await prefs.setString('user_id', userId);
+    await prefs.setString('username', username);
+  }
+
+  static Future<String?> getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('jwt_token');
+  }
+
+  static Future<String?> getUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('user_id');
+  }
+
+  static Future<String?> getUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('username');
+  }
+
+  // Safe JSON decode
+  static dynamic _safeDecode(String body) {
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      return {'message': body};
+    }
+  }
+
+  // Extract userId safely
+  static String? _extractUserId(dynamic data) {
+    if (data == null) return null;
+    final user = data['user'];
+    final dynamic candidate =
+        (user?['id'] ??
+        user?['_id'] ??
+        data['_id'] ??
+        data['id'] ??
+        data['userId']);
+    return candidate?.toString();
+  }
+
+  // Extract username safely
+  static String? _extractUsername(dynamic data) {
+    if (data == null) return null;
+    final user = data['user'];
+    return user?['username']?.toString() ?? data['username']?.toString();
+  }
+
+  // Signup
+  static Future<Map<String, dynamic>> signup({
+    required String username,
+    required String email,
+    required String password,
+  }) async {
+    final url = Uri.parse('$baseUrl/auth/signup');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'username': username,
+        'email': email,
+        'password': password,
+      }),
+    );
+
+    print('Signup API status: ${response.statusCode}');
+    print('Signup API body: ${response.body}');
+
+    final data = _safeDecode(response.body);
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final userId = _extractUserId(data);
+      final savedUsername = _extractUsername(data) ?? username;
+
+      if (userId != null) {
+        await saveUser(
+          userId,
+          '',
+          savedUsername,
+        ); // Save empty token if none provided
+        return {'success': true, 'data': data};
+      } else {
+        return {
+          'success': false,
+          'message': 'Signup response missing user id',
+          'data': data,
+        };
+      }
+    }
+
+    return {
+      'success': false,
+      'status': response.statusCode,
+      'message': data['message'] ?? 'Signup failed',
+      'data': data,
+    };
+  }
+
+  // Login
+  static Future<Map<String, dynamic>> login({
+    required String email,
+    required String password,
+  }) async {
+    final url = Uri.parse('$baseUrl/auth/login');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+
+    print('Login API status: ${response.statusCode}');
+    print('Login API body: ${response.body}');
+
+    final data = _safeDecode(response.body);
+
+    if (response.statusCode == 200) {
+      final token = data['token']?.toString();
+      final userId = _extractUserId(data);
+      final savedUsername =
+          _extractUsername(data) ??
+          email; // Fallback to email if username is null
+
+      print('Extracted token: $token');
+      print('Extracted userId: $userId');
+      print('Extracted username: $savedUsername');
+
+      if (token != null && userId != null) {
+        await saveUser(userId, token, savedUsername);
+        return {'success': true, 'data': data};
+      } else {
+        return {
+          'success': false,
+          'message': 'Login response missing token or user id',
+          'data': data,
+        };
+      }
+    }
+
+    return {
+      'success': false,
+      'status': response.statusCode,
+      'message': data['message'] ?? 'Login failed',
+      'data': data,
+    };
+  }
+
+  static Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('jwt_token');
+    await prefs.remove('user_id');
+    await prefs.remove('username');
+  }
+
+  // PvP Game Methods
+
+ static Future<Map<String, dynamic>> createGame({
+    required String token,
+    required String userId,
+    required int whiteTime,
+    required int blackTime,
+    required bool isPrivate,
+  }) async {
+    print('API createGame called with userId: $userId');
+    print('API createGame called with token: ${token.substring(0, 20)}...');
+    print('API createGame called with isPrivate: $isPrivate');
+    
+    // Only generate join code for private games
+    String? joinCode;
+    if (isPrivate) {
+      joinCode = generateGameCode();
+      print('Generated join code for private game: $joinCode');
+    }
+    
+    final requestBody = {
+      'whiteTime': whiteTime,
+      'blackTime': blackTime,
+      'isPrivate': isPrivate,
+    };
+    
+    // Only include joinCode in request if it's a private game
+    if (isPrivate && joinCode != null) {
+      requestBody['joinCode'] = joinCode;
+    }
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/games'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(requestBody),
+    );
+    
+    print('API createGame response status: ${response.statusCode}');
+    print('API createGame response body: ${response.body}');
+    
+    final data = _safeDecode(response.body);
+    if (response.statusCode == 200) {
+      // For private games, ensure the response includes the join code
+      if (isPrivate && joinCode != null) {
+        data['joinCode'] = joinCode;
+      }
+      return data;
+    }
+    throw Exception(data['message'] ?? 'Failed to create game');
+  }
+
+ static Future<List<Map<String, dynamic>>> getAvailableGames(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/games'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final data = _safeDecode(response.body);
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(data);
+    }
+    throw Exception(data['message'] ?? 'Failed to fetch games');
+  }
+
+  // api_service.dart
+  static Future<Map<String, dynamic>> joinGame({
+    required String token,
+    required String gameId,
+    required String userId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/games/join/$gameId'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'userId': userId}),
+    );
+    final data = _safeDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    }
+    throw Exception(data['message'] ?? 'Failed to join game');
+  }
+
+  // Join a game by code
+  static Future<Map<String, dynamic>> joinGameByCode({
+    required String joinCode,
+    required String token,
+  }) async {
+    final userId = await getUserId();
+    if (userId == null) {
+      throw Exception('User not logged in');
+    }
+    final response = await http.post(
+      Uri.parse('$baseUrl/games/join-by-code'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'joinCode': joinCode, 'userId': userId}),
+    );
+    final data = _safeDecode(response.body);
+    if (response.statusCode == 200) {
+      initializeSocket(token);
+      joinGameRoom(data['gameId']);
+      return data;
+    } else {
+      throw Exception(data['message'] ?? 'Failed to join game');
+    }
+  }
+
+  static Future<void> cancelGame({
+    required String token,
+    required String gameId,
+  }) async {
+    print('API cancelGame called with gameId: $gameId');
+    print('API cancelGame called with token: ${token.substring(0, 20)}...');
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/games/cancel/$gameId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    
+    print('API cancelGame response status: ${response.statusCode}');
+    print('API cancelGame response body: ${response.body}');
+    
+    if (response.statusCode != 200) {
+      throw Exception('Failed to cancel game - Status: ${response.statusCode}, Body: ${response.body}');
+    }
+  }
+
+  static Future<void> leaveGame({
+    required String token,
+    required String gameId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/games/leave/$gameId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to leave game');
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateUser({
+    required String token,
+    required String userId,
+    String? username,
+    String? email,
+    String? password,
+    File? image,
+  }) async {
+    var request = http.MultipartRequest(
+      'PUT',
+      Uri.parse('$baseUrl/users/$userId'),
+    );
+    request.headers['Authorization'] = 'Bearer $token';
+
+    if (username != null) request.fields['username'] = username;
+    if (email != null) request.fields['email'] = email;
+    if (password != null) request.fields['password'] = password;
+    if (image != null) {
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
+    }
+
+    final response = await request.send();
+    final responseString = await response.stream.bytesToString();
+    final data = _safeDecode(responseString);
+
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['message'] ?? 'Failed to update user');
+    }
+  }
+
+  static void disposeSocket() {
+    socket?.disconnect();
+    socket = null;
+  }
+
+  // api_service.dart
+  static void initializeSocket(String token) {
+    socket = socket_io.io('http://10.0.2.2:5000', {
+      'transports': ['websocket'],
+      'autoConnect': false,
+      'extraHeaders': {'Authorization': 'Bearer $token'},
+    });
+    socket!.connect();
+    socket!.onConnect((_) => print('Socket connected'));
+    socket!.onConnectError((data) => print('Socket connection error: $data'));
+    socket!.onError((data) => print('Socket error: $data'));
+  }
+
+  static void joinGameRoom(String gameId) {
+    socket?.emit('join_game', {'gameId': gameId});
+  }
+
+  static void onOpponentJoined(BuildContext context, Function(Map<String, dynamic>) callback) {
+    socket?.on('player_joined', (data) {
+      callback(data);
+    });
+  }
+
+  static void onMoveReceived(BuildContext context, Function(Map<String, dynamic>) callback) {
+    socket?.on('move', (data) {
+      print("Received move: $data");
+      callback(Map<String, dynamic>.from(data));
+    });
+  }
+static void onGameOver(BuildContext context, Function(Map<String, dynamic>) callback) {
+    socket?.on('game_over', (data) {
+      callback(Map<String, dynamic>.from(data));
+    });
+  }
+static void onMove(Function(Map<String, dynamic>) callback) {
+  socket?.on('move', (data) {
+    print("Received move: $data");
+    callback(Map<String, dynamic>.from(data));
+  });
+}
+
+static void onGameDeleted(Function(Map<String, dynamic>) callback) {
+  socket?.on('game_deleted', (data) {
+    print("Game deleted: $data");
+    callback(Map<String, dynamic>.from(data));
+  });
+}
+
+static void onOpponentLeft(Function(Map<String, dynamic>) callback) {
+  socket?.on('opponent_left', (data) {
+    print("Opponent left: $data");
+    callback(Map<String, dynamic>.from(data));
+  });
+}
+
+static void onGameRemoved(Function(Map<String, dynamic>) callback) {
+  socket?.on('game_removed', (data) {
+    print("Game removed from lobby: $data");
+    callback(Map<String, dynamic>.from(data));
+  });
+}
+
+}
+
+/////////////////////////////
+this is constants.dart:
+class Constants {
+  static const String homeScreen = '/homeScreen';
+  static const String gameScreen = '/gameScreen';
+  static const String settingScreen = '/settingScreen';
+  static const String aboutScreen = '/aboutScreen';
+  static const String loginScreen = '/loginScreen';
+  static const String signupScreen = '/signupScreen';
+  static const String profileScreen = '/profileScreen';
+  static const String playVsFriendScreen = '/playVsFriendScreen';
+  static const String waitingLobby = '/waitingLobby';
+  static const String availableGamesScreen = '/availableGamesScreen';
+  static const String gameSetupScreen = '/gameSetupScreen';
+  static const custom = 'Custom';
+
+  static const String joinRoomScreen = '/joinRoomScreen';
+}
+
+enum PlayerColor {
+  white,
+  black,
+}
+
+enum GameDifficulty {
+  easy,
+  medium,
+  hard,
 }
