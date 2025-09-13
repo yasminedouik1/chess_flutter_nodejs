@@ -323,6 +323,11 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setIsPlaying(bool value) {
+    _isPlaying = value;
+    notifyListeners();
+  }
+
   void setWaitingText(String text) {
     _waitingText = text;
     notifyListeners();
@@ -515,7 +520,17 @@ class GameProvider extends ChangeNotifier {
       ApiService.initializeSocket(token);
       ApiService.joinGameRoom(_gameId);
       
-      // Don't navigate here - wait for the socket event to handle navigation
+      // Initialize socket listeners for the joiner
+      initSocketListeners(context);
+      
+      // Navigate to game screen immediately for the joiner
+      if (context.mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          Constants.gameScreen,
+          (route) => false,
+        );
+      }
       notifyListeners();
     } catch (e) {
       print('Error joining game: $e');
@@ -942,6 +957,9 @@ class GameProvider extends ChangeNotifier {
       _isPlaying = true;
       isHumanWhite = data['creatorId'] == context.read<AuthProvider>().userId ? true : false;
       _player = _isHumanWhite ? Squares.white : Squares.black;
+      
+      // Reset the game to initial position
+      _game = bishop.Game(variant: bishop.Variant.standard());
       _state = _game.squaresState(_player);
       
       // Navigate both players to the game screen
@@ -956,53 +974,61 @@ class GameProvider extends ChangeNotifier {
     });
 
     ApiService.onMoveReceived(context, (data) {
-      final move = data['move'];
+      print('Received move from opponent: $data');
       final fen = data['fen'];
       final isWhiteMove = data['isWhite'];
-      // Apply the move directly to _game
-      if (_game.makeMoveString(move)) {
-        // Generate legal moves for SquaresState
-        final legalMoves = _game
-            .generateLegalMoves()
-            .map((m) => _bishopMoveToSquaresMove(m))
-            .toList();
-        // Update _state using SquaresState constructor
-        setState(
-          SquaresState(
-            board: _game.squaresState(_player).board,
-            player: _isHumanWhite ? Squares.white : Squares.black,
-            state:
-                isWhiteMove && _player == Squares.black ||
-                    !isWhiteMove && _player == Squares.white
-                ? PlayState.ourTurn
-                : PlayState.theirTurn,
-            size: BoardSize(8, 8),
-            moves: legalMoves,
-          ),
-        );
-        notifyListeners();
+      
+      // Load the new FEN position into the game
+      _game.loadFen(fen);
+      
+      // Generate legal moves for the current player
+      final legalMoves = _game
+          .generateLegalMoves()
+          .map((m) => _bishopMoveToSquaresMove(m))
+          .toList();
+      
+      // Update the state with the new position
+      setState(
+        SquaresState(
+          board: _game.squaresState(_player).board,
+          player: _isHumanWhite ? Squares.white : Squares.black,
+          state: isWhiteMove == _isHumanWhite ? PlayState.ourTurn : PlayState.theirTurn,
+          size: BoardSize(8, 8),
+          moves: legalMoves,
+        ),
+      );
+      
+      // Switch timers
+      if (isWhiteMove) {
+        pauseBlacksTimer();
+        startWhitesTime(context: context, onNewGame: () {});
+      } else {
+        pauseWhitesTimer();
+        startBlacksTime(context: context, onNewGame: () {});
       }
-      if (checkmate(fen, context)) {
-        gameOverDialog(
-          context: context,
-          timeOut: false,
-          userWon:
-              (isWhiteMove && _player == Squares.black) ||
-              (!isWhiteMove && _player == Squares.white),
-          onNewGame: () {},
-          reason: 'checkmate',
-        );
-      }
+      
+      notifyListeners();
     });
 
     ApiService.onGameOver(context, (data) {
+      print('Game over received: $data');
       final reason = data['reason'];
-      final winnerId = data['winnerId'];
-      final userId = context.read<AuthProvider>().userId;
+      final winnerSide = data['winnerSide'];
+      
+      // Determine if current user won
+      bool userWon = false;
+      if (winnerSide != null) {
+        if (winnerSide == 'white' && _isHumanWhite) {
+          userWon = true;
+        } else if (winnerSide == 'black' && !_isHumanWhite) {
+          userWon = true;
+        }
+      }
+      
       gameOverDialog(
         context: context,
         timeOut: reason == 'timeout',
-        userWon: winnerId == userId,
+        userWon: userWon,
         onNewGame: () {},
         reason: reason,
       );

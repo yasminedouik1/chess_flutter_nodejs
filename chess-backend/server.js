@@ -96,60 +96,58 @@ io.on('connection', (socket) => {
   });
 
   // Handle move
-  socket.on('move', async ({ gameId, moveStr, isWhite }) => {
+  socket.on('move', async ({ gameId, move, isWhite, fen }) => {
     try {
       const Game = require('./models/Game');
       const game = await Game.findOne({ gameId });
-      if (!game || game.result !== 'ongoing') {
-        socket.emit('error', { message: 'Game not found or ended' });
+      if (!game || game.isPlaying !== true) {
+        socket.emit('error', { message: 'Game not found or not playing' });
         return;
       }
-      if (game.isWhitesTurn !== isWhite) {
+
+      // Validate it's the correct player's turn
+      const isWhitesTurn = game.creatorId === game.opponentId ? 
+        (game.creatorId === socket.userId) : 
+        (game.creatorId === socket.userId);
+      
+      if (isWhitesTurn !== isWhite) {
         socket.emit('error', { message: 'Not your turn' });
         return;
       }
 
-      const uci = parseMoveToUCI(moveStr);
-      const chess = new Chess(game.fen);
-      const move = chess.move(uci);
-      if (!move || chess.isGameOver()) {
-        socket.emit('error', { message: 'Invalid move' });
-        return;
-      }
-
-      // Update game
-      game.fen = chess.fen();
-      game.isWhitesTurn = !game.isWhitesTurn;
-      game.moves.push({ from: move.from, to: move.to, san: move.san });
+      // Update game with the new FEN
+      game.fen = fen;
+      game.isWhitesTurn = !isWhite;
       await game.save();
 
-      // Broadcast move
-      io.to(gameId).emit('move_made', { 
-        fen: game.fen, 
-        move: moveStr, 
-        isWhitesTurn: game.isWhitesTurn,
-        san: move.san 
+      // Broadcast move to all players in the room
+      io.to(gameId).emit('move', { 
+        gameId: gameId,
+        move: move, 
+        isWhite: !isWhite, // Next player's turn
+        fen: fen
       });
 
-      // Check game over
+      console.log(`Move broadcasted in game ${gameId}: ${move} by ${isWhite ? 'white' : 'black'}`);
+
+      // Check game over conditions
+      const Chess = require('chess.js');
+      const chess = new Chess(fen);
       if (chess.isGameOver()) {
         let result, winnerSide;
         if (chess.isCheckmate()) {
-          winnerSide = game.isWhitesTurn ? 'black' : 'white'; // Last move won
+          winnerSide = isWhite ? 'black' : 'white'; // Last move won
           result = `${winnerSide}_wins`;
         } else if (chess.isDraw()) {
           result = 'draw';
         } else {
-          result = 'stalemate'; // Treat as draw
-          result = 'draw';
+          result = 'draw'; // Treat stalemate as draw
         }
         game.result = result;
         await game.save();
 
-        // Update ratings
-        await updateRatings(game, result, winnerSide);
-
         io.to(gameId).emit('game_over', { 
+          gameId: gameId,
           result, 
           winnerSide,
           reason: chess.isCheckmate() ? 'checkmate' : 'draw' 

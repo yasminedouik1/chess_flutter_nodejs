@@ -63,13 +63,19 @@ class GameScreen extends HookWidget {
       final result = gameProvider.makeSquaresMove(move);
       if (result) {
         final newFen = gameProvider.state.board.fen;
+        
+        // Send move to backend via socket
         ApiService.socket?.emit('move', {
           'gameId': gameProvider.gameId,
           'move': move.toString(),
           'isWhite': gameProvider.player == Squares.white,
           'fen': newFen,
         });
+        
+        // Update local state
         await gameProvider.setSquaresState();
+        
+        // Switch timer
         if (gameProvider.player == Squares.white) {
           gameProvider.pauseWhitesTimer();
           startTimer(context, isWhiteTimer: false, onNewGame: () {});
@@ -78,7 +84,7 @@ class GameScreen extends HookWidget {
           startTimer(context, isWhiteTimer: true, onNewGame: () {});
         }
       }
-  }
+    }
 
     void checkGameOverListener(BuildContext context) {
     gameProvider.gameOverListener(
@@ -209,12 +215,21 @@ class GameScreen extends HookWidget {
     // Initialize game on first build
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        gameProvider.resetGame(newGame: false, context: context);
         if (gameProvider.vsComputer) {
+          gameProvider.resetGame(newGame: false, context: context);
           gameProvider.initStockfish();
         } else {
+          // For multiplayer games, only reset if not already playing
+          if (!gameProvider.isPlaying) {
+            gameProvider.resetGame(newGame: false, context: context);
+          }
           gameProvider.initSocketListeners(context);
-          startTimer(context, isWhiteTimer: true, onNewGame: () {});
+          // Start timer only if it's the player's turn
+          if (gameProvider.isHumanWhite) {
+            startTimer(context, isWhiteTimer: true, onNewGame: () {});
+          } else {
+            startTimer(context, isWhiteTimer: false, onNewGame: () {});
+          }
         }
       });
 

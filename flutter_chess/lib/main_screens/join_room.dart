@@ -55,8 +55,25 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
       );
       
       if (context.mounted) {
-        final gameId = data['gameId'];
-        context.read<GameProvider>().gameId = gameId;
+        final gameProvider = context.read<GameProvider>();
+        gameProvider.gameId = data['gameId'];
+        gameProvider.setOpponentData(
+          opponentId: data['creatorId'],
+          opponentName: data['creatorName'],
+          opponentImage: data['creatorImage'],
+          opponentRating: data['creatorRating'],
+          whiteTime: data['whiteTime'],
+          blackTime: data['blackTime'],
+          increment: data['increment'] ?? 0,
+          gameId: data['gameId'],
+        );
+        gameProvider.isHumanWhite = false; // Joiner is black
+        gameProvider.setPlayerColor(player: 1); // Black player
+        gameProvider.setIsPlaying(true);
+        
+        // Initialize socket listeners for the joiner
+        gameProvider.initSocketListeners(context);
+        
         Navigator.pushNamed(context, Constants.gameScreen);
       }
     } catch (e) {

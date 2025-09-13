@@ -135,131 +135,129 @@ router.get('/:gameId', authenticate, async (req, res) => {
 });
 
 // Join a game
-// gameRoutes.js
-// router.post('/join', authenticate, async (req, res) => {
-//   const { gameId, userId } = req.body;
-//   try {
-//     if (userId !== req.user.id) {
-//       return res.status(403).json({ message: 'User ID does not match token' });
-//     }
-//     const game = await Game.findOneAndUpdate(
-//       { gameId, isPlaying: false, creatorId: { $ne: userId } },
-//       { $set: { isPlaying: true, opponentId: userId } },
-//       { new: true }
-//     );
-//     if (!game) {
-//       return res.status(404).json({ message: 'Game not found or already started' });
-//     }
-//     if (game.creatorId === userId) {
-//       return res.status(400).json({ message: 'Cannot join your own game' });
-//     }
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       return res.status(404).json({ message: 'User not found' });
-//     }
-//     //game.opponentId = userId;
-//     game.opponentName = user.username;
-//     game.opponentImage = user.image || '';
-//     game.opponentRating = user.playerRating || 1200;
-//     //game.isPlaying = true;
-//     await game.save();
-//     req.io.to(gameId).emit('player_joined', {
-//       gameId,
-//       player2Id: userId, // Keep for compatibility, but frontend should use opponentId
-//       opponentName: user.username,
-//       opponentImage: user.image || '',
-//       opponentRating: user.playerRating || 1200,
-//       whiteTime: game.whiteTime,
-//       blackTime: game.blackTime,
-//       increment: game.increment,
-//     });
-//     res.json({
-//       gameId,
-//       creatorId: game.creatorId,
-//       creatorName: game.creatorName,
-//       creatorImage: game.creatorImage,
-//       creatorRating: game.creatorRating,
-//       opponentId: userId,
-//       opponentName: user.username,
-//       opponentImage: user.image || '',
-//       opponentRating: user.playerRating || 1200,
-//       whiteTime: game.whiteTime,
-//       blackTime: game.blackTime,
-//       increment: game.increment,
-//     });
-//   } catch (err) {
-//     res.status(500).json({ message: 'Server error: ' + err.message });
-//   }
-// });
+router.post('/join/:gameId', authenticate, async (req, res) => {
+  const { gameId } = req.params;
+  const { userId } = req.body;
+  try {
+    if (userId !== req.user.id) {
+      return res.status(403).json({ message: 'User ID does not match token' });
+    }
+    const game = await Game.findOneAndUpdate(
+      { gameId, isPlaying: false, creatorId: { $ne: userId } },
+      { $set: { isPlaying: true, opponentId: userId } },
+      { new: true }
+    );
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found or already started' });
+    }
+    if (game.creatorId === userId) {
+      return res.status(400).json({ message: 'Cannot join your own game' });
+    }
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    game.opponentName = user.username;
+    game.opponentImage = user.image || '';
+    game.opponentRating = user.playerRating || 1200;
+    await game.save();
+    req.io.to(gameId).emit('player_joined', {
+      gameId,
+      creatorId: game.creatorId,
+      opponentName: user.username,
+      opponentImage: user.image || '',
+      opponentRating: user.playerRating || 1200,
+      whiteTime: game.whiteTime,
+      blackTime: game.blackTime,
+      increment: game.increment,
+    });
+    res.json({
+      gameId,
+      creatorId: game.creatorId,
+      creatorName: game.creatorName,
+      creatorImage: game.creatorImage,
+      creatorRating: game.creatorRating,
+      opponentId: userId,
+      opponentName: user.username,
+      opponentImage: user.image || '',
+      opponentRating: user.playerRating || 1200,
+      whiteTime: game.whiteTime,
+      blackTime: game.blackTime,
+      increment: game.increment,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
 
 
 
 // Cancel/Delete game (only if not playing)
-// router.delete('/:gameId', authenticate, async (req, res) => {
-//   const { gameId } = req.params;
-//   try {
-//     const game = await Game.findOne({ gameId, creatorId: req.userId, isPlaying: false });
-//     if (!game) return res.status(400).json({ message: 'Cannot cancel game' });
-//     await Game.deleteOne({ gameId });
-//     req.io.emit('game_cancelled', { gameId });
-//     res.json({ message: 'Game cancelled' });
-//   } catch (e) {
-//     res.status(500).json({ message: 'Server error' });
-//   }
-// });
+router.post('/cancel/:gameId', authenticate, async (req, res) => {
+  const { gameId } = req.params;
+  try {
+    const game = await Game.findOne({ gameId, creatorId: req.userId, isPlaying: false });
+    if (!game) return res.status(400).json({ message: 'Cannot cancel game' });
+    await Game.deleteOne({ gameId });
+    req.io.emit('game_cancelled', { gameId });
+    res.json({ message: 'Game cancelled' });
+  } catch (e) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 
 // Join a game by code (for private games)
-// router.post('/join-by-code', authenticate, async (req, res) => {
-//   const { joinCode, userId } = req.body;
-//   try {
-//     if (userId !== req.user.id) {
-//       return res.status(403).json({ message: 'User ID does not match token' });
-//     }
-//     const game = await Game.findOneAndUpdate(
-//       { joinCode, isPlaying: false, isPrivate: true, creatorId: { $ne: userId } },
-//       { $set: { isPlaying: true, opponentId: userId } },
-//       { new: true }
-//     );
-//     if (!game) {
-//       return res.status(404).json({ message: 'Game not found, already started, or you are the creator' });
-//     }
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       return res.status(404).json({ message: 'User not found' });
-//     }
-//     game.opponentName = user.username;
-//     game.opponentImage = user.image || '';
-//     game.opponentRating = user.playerRating || 1200;
-//     await game.save();
-//     req.io.to(game.gameId).emit('player_joined', {
-//       gameId: game.gameId,
-//       player2Id: userId,
-//       opponentName: user.username,
-//       opponentImage: user.image || '',
-//       opponentRating: user.playerRating || 1200,
-//       whiteTime: game.whiteTime,
-//       blackTime: game.blackTime,
-//       increment: game.increment,
-//     });
-//     res.json({
-//       gameId: game.gameId,
-//       creatorId: game.creatorId,
-//       creatorName: game.creatorName,
-//       creatorImage: game.creatorImage,
-//       creatorRating: game.creatorRating,
-//       opponentId: userId,
-//       opponentName: user.username,
-//       opponentImage: user.image || '',
-//       opponentRating: user.playerRating || 1200,
-//       whiteTime: game.whiteTime,
-//       blackTime: game.blackTime,
-//       increment: game.increment,
-//     });
-//   } catch (err) {
-//     res.status(500).json({ message: 'Server error: ' + err.message });
-//   }
-// });
+router.post('/join-by-code', authenticate, async (req, res) => {
+  const { joinCode, userId } = req.body;
+  try {
+    if (userId !== req.user.id) {
+      return res.status(403).json({ message: 'User ID does not match token' });
+    }
+    const game = await Game.findOneAndUpdate(
+      { joinCode, isPlaying: false, isPrivate: true, creatorId: { $ne: userId } },
+      { $set: { isPlaying: true, opponentId: userId } },
+      { new: true }
+    );
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found, already started, or you are the creator' });
+    }
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    game.opponentName = user.username;
+    game.opponentImage = user.image || '';
+    game.opponentRating = user.playerRating || 1200;
+    await game.save();
+    req.io.to(game.gameId).emit('player_joined', {
+      gameId: game.gameId,
+      creatorId: game.creatorId,
+      opponentName: user.username,
+      opponentImage: user.image || '',
+      opponentRating: user.playerRating || 1200,
+      whiteTime: game.whiteTime,
+      blackTime: game.blackTime,
+      increment: game.increment,
+    });
+    res.json({
+      gameId: game.gameId,
+      creatorId: game.creatorId,
+      creatorName: game.creatorName,
+      creatorImage: game.creatorImage,
+      creatorRating: game.creatorRating,
+      opponentId: userId,
+      opponentName: user.username,
+      opponentImage: user.image || '',
+      opponentRating: user.playerRating || 1200,
+      whiteTime: game.whiteTime,
+      blackTime: game.blackTime,
+      increment: game.increment,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
 
 // router.delete('/:id', auth, async (req, res) => {
 //   try {

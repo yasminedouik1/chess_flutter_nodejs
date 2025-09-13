@@ -106,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 300,
                 height: 120,
                 child: buildGameType(
-                  label: 'Play vs Friend',
+                  label: 'Play Online',
                   icon: Icons.person,
                   onTap: () {
                     gameProvider.setVsComputer(value: false);
