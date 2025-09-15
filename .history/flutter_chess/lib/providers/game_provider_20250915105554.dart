@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';
@@ -97,16 +96,6 @@ class GameProvider extends ChangeNotifier {
 
   bool _drawOfferedByOpponent = false;
   bool get drawOfferedByOpponent => _drawOfferedByOpponent;
-
-  String get whitesTimeFormatted => _formatDuration(_whitesTime);
-  String get blacksTimeFormatted => _formatDuration(_blacksTime);
-  // Format Duration to MM:SS
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
 
   void setState(SquaresState newState) {
     _state = newState;
@@ -217,8 +206,6 @@ class GameProvider extends ChangeNotifier {
     _aiThinking = true;
     notifyListeners();
     try {
-            await Future.delayed(Duration(milliseconds: Random().nextInt(4500)));
-
       final move = await getStockfishMove(_game.fen, _gameLevel);
       if (move != null) {
         final newFen = makeMove(_game.fen, move, context);
@@ -272,8 +259,6 @@ class GameProvider extends ChangeNotifier {
     _blacksTimer?.cancel();
     if (newGame) {
       _player = _isHumanWhite ? Squares.white : Squares.black;
-      _whitesScore = 0.0;
-    _blacksScore = 0.0;
     }
     _game = bishop.Game(variant: bishop.Variant.standard());
     _state = _game.squaresState(_player);
@@ -717,154 +702,203 @@ class GameProvider extends ChangeNotifier {
   //   });
   // }
 
- void gameOverListener({
-  required BuildContext context,
-  required Function onNewGame,
-}) {
-  if (_game.gameOver) {
-    String reason = 'draw';
-    bool userWon = false;
-    if (_game.checkmate) {
-      reason = 'checkmate';
-      userWon = _vsComputer
-          ? (_isHumanWhite && _game.winner == Squares.white) ||
-            (!_isHumanWhite && _game.winner == Squares.black)
-          : (_isHumanWhite && _game.winner == Squares.white) ||
-            (!_isHumanWhite && _game.winner == Squares.black);
-    } else if (_game.stalemate || _game.insufficientMaterial) {
-      reason = 'draw';
-    }
-    _isPlaying = false;
-    if (!_vsComputer) {
-      final winnerId = _game.checkmate
-          ? (_game.winner == Squares.white
-              ? (_isHumanWhite ? context.read<AuthProvider>().user?.uid : _opponentId)
-              : (_isHumanWhite ? _opponentId : context.read<AuthProvider>().user?.uid))
-          : null;
-      ApiService.socket?.emit('game_over', {
-        'gameId': _gameId,
-        'reason': reason,
-        'winnerId': winnerId,
-      });
-    }
-    gameOverDialog(
-      context: context,
-      timeOut: false,
-      userWon: userWon,
-      onNewGame: onNewGame,
-      reason: reason,
-    );
-  }
-}
-
-void gameOverDialog({
-  required BuildContext context,
-  required bool timeOut,
-  required bool userWon,
-  required Function onNewGame,
-  String? reason,
-}) {
-  String resultsToShow = '';
-  double tempWhitesScore = _whitesScore;
-  double tempBlacksScore = _blacksScore;
-
-  if (timeOut) {
-    resultsToShow = userWon ? 'You won on time' : 'Opponent won on time';
-    if (userWon) {
-      if (_isHumanWhite) {
-        tempWhitesScore += 1.0;
-      } else {
-        tempBlacksScore += 1.0;
+  // void gameOverListener({
+  //   required BuildContext context,
+  //   required Function onNewGame,
+  // }) {
+  //   if (_game.gameOver) {
+  //     String reason;
+  //     String? winnerId;
+  //     if (_game.checkmate) {
+  //       reason = 'checkmate';
+  //       final winnerColor = _game.winner;
+  //       winnerId = (winnerColor == Squares.white)
+  //           ? (_isHumanWhite
+  //                 ? context.read<AuthProvider>().user?.uid
+  //                 : _opponentId)
+  //           : (_isHumanWhite
+  //                 ? _opponentId
+  //                 : context.read<AuthProvider>().user?.uid);
+  //     } else if (_game.stalemate || _game.insufficientMaterial) {
+  //       reason = 'draw';
+  //     } else {
+  //       reason = 'draw';
+  //     }
+  //     _isPlaying = false;
+  //     if (!_vsComputer) {
+  //       ApiService.socket?.emit('game_over', {
+  //         'gameId': _gameId,
+  //         'reason': reason,
+  //         'winnerId': winnerId,
+  //       });
+  //     }
+  //     final userWon = winnerId == context.read<AuthProvider>().user?.uid;
+  //     gameOverDialog(
+  //       context: context,
+  //       timeOut: false,
+  //       userWon: userWon,
+  //       onNewGame: onNewGame,
+  //       reason: reason,
+  //     );
+  //   }
+  // }
+void gameOverListener({
+    required BuildContext context,
+    required Function onNewGame,
+  }) {
+    if (_game.gameOver) {
+      String reason = 'draw';
+      bool userWon = false;
+      if (_game.checkmate) {
+        reason = 'checkmate';
+        userWon = _vsComputer
+            ? (_isHumanWhite && _game.winner == Squares.white) ||
+              (!_isHumanWhite && _game.winner == Squares.black)
+            : (_isHumanWhite && _game.winner == Squares.white) ||
+              (!_isHumanWhite && _game.winner == Squares.black);
+      } else if (_game.stalemate || _game.insufficientMaterial) {
+        reason = 'draw';
       }
-    } else {
-      if (_isHumanWhite) {
-        tempBlacksScore += 1.0;
-      } else {
-        tempWhitesScore += 1.0;
+      _isPlaying = false;
+      if (!_vsComputer) {
+        final winnerId = _game.checkmate
+            ? (_game.winner == Squares.white
+                ? (_isHumanWhite ? context.read<AuthProvider>().user?.uid : _opponentId)
+                : (_isHumanWhite ? _opponentId : context.read<AuthProvider>().user?.uid))
+            : null;
+        ApiService.socket?.emit('game_over', {
+          'gameId': _gameId,
+          'reason': reason,
+          'winnerId': winnerId,
+        });
       }
-    }
-  } else if (reason == 'draw') {
-    resultsToShow = 'Draw';
-    tempWhitesScore += 0.5;
-    tempBlacksScore += 0.5;
-  } else if (reason == 'resign') {
-    resultsToShow = userWon ? 'Opponent resigned' : 'You resigned';
-    if (userWon) {
-      if (_isHumanWhite) {
-        tempWhitesScore += 1.0;
-      } else {
-        tempBlacksScore += 1.0;
-      }
-    } else {
-      if (_isHumanWhite) {
-        tempBlacksScore += 1.0;
-      } else {
-        tempWhitesScore += 1.0;
-      }
-    }
-  } else if (reason == 'checkmate') {
-    resultsToShow = userWon ? 'You won by checkmate' : 'Opponent won by checkmate';
-    if (userWon) {
-      if (_isHumanWhite) {
-        tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
-      } else {
-        tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
-      }
-    } else {
-      if (_isHumanWhite) {
-        tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
-      } else {
-        tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
-      }
+      gameOverDialog(
+        context: context,
+        timeOut: false,
+        userWon: userWon,
+        onNewGame: onNewGame,
+        reason: reason,
+      );
     }
   }
 
-  _whitesScore = tempWhitesScore;
-  _blacksScore = tempBlacksScore;
+  void gameOverDialog({
+    required BuildContext context,
+    required bool timeOut,
+    required bool userWon,
+    required Function onNewGame,
+    String? reason,
+  }) {
+    String resultsToShow = '';
+    double whiteScoresToShow = _whitesScore;
+    double blackScoresToShow = _blacksScore;
 
-  if (context.mounted) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Game Over\n$_whitesScore - $_blacksScore',
-          textAlign: TextAlign.center,
-        ),
-        content: Text(resultsToShow, textAlign: TextAlign.center),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (context.mounted) {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  Constants.homeScreen,
-                  (route) => false,
-                );
-              }
-            },
-            child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+    // Reset scores temporarily for display to avoid double counting
+    double tempWhitesScore = _whitesScore;
+    double tempBlacksScore = _blacksScore;
+
+    if (timeOut) {
+      resultsToShow = userWon ? 'You won on time' : 'Opponent won on time';
+      if (userWon) {
+        if (_isHumanWhite) {
+          tempWhitesScore += 1.0;
+        } else {
+          tempBlacksScore += 1.0;
+        }
+      } else {
+        if (_isHumanWhite) {
+          tempBlacksScore += 1.0;
+        } else {
+          tempWhitesScore += 1.0;
+        }
+      }
+    } else if (reason == 'draw') {
+      resultsToShow = 'Draw';
+      tempWhitesScore += 0.5;
+      tempBlacksScore += 0.5;
+    } else if (reason == 'resign') {
+      resultsToShow = userWon ? 'Opponent resigned' : 'You resigned';
+      if (userWon) {
+        if (_isHumanWhite) {
+          tempWhitesScore += 1.0;
+        } else {
+          tempBlacksScore += 1.0;
+        }
+      } else {
+        if (_isHumanWhite) {
+          tempBlacksScore += 1.0;
+        } else {
+          tempWhitesScore += 1.0;
+        }
+      }
+    } else if (reason == 'checkmate') {
+      resultsToShow = userWon ? 'You won by checkmate' : 'Opponent won by checkmate';
+      if (userWon) {
+        // Human wins
+        if (_isHumanWhite) {
+          tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
+        } else {
+          tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
+        }
+      } else {
+        // Opponent (or computer) wins
+        if (_isHumanWhite) {
+          tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
+        } else {
+          tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
+        }
+      }
+    }
+
+    // Update actual scores only after dialog display
+    _whitesScore = tempWhitesScore;
+    _blacksScore = tempBlacksScore;
+    whiteScoresToShow = _whitesScore;
+    blackScoresToShow = _blacksScore;
+
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Game Over\n$whiteScoresToShow - $blackScoresToShow',
+            textAlign: TextAlign.center,
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (context.mounted) {
-                resetGame(newGame: true, context: context);
-                onNewGame();
-              }
-            },
-            child: const Text(
-              'New Game',
-              style: TextStyle(color: Colors.white),
+          content: Text(resultsToShow, textAlign: TextAlign.center),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (context.mounted) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    Constants.homeScreen,
+                    (route) => false,
+                  );
+                }
+              },
+              child: const Text('Cancel', style: TextStyle(color: Colors.red)),
             ),
-          ),
-        ],
-      ),
-    );
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (context.mounted) {
+                  resetGame(newGame: true, context: context);
+                  onNewGame();
+                }
+              },
+              child: const Text(
+                'New Game',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    notifyListeners();
   }
-  notifyListeners();
-}
   void startWaitingTimer({required BuildContext context}) {
     int secondsLeft = 90;
     _waitingTimer?.cancel();

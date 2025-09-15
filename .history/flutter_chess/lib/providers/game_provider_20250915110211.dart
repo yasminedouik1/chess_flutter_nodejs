@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';
@@ -97,16 +96,6 @@ class GameProvider extends ChangeNotifier {
 
   bool _drawOfferedByOpponent = false;
   bool get drawOfferedByOpponent => _drawOfferedByOpponent;
-
-  String get whitesTimeFormatted => _formatDuration(_whitesTime);
-  String get blacksTimeFormatted => _formatDuration(_blacksTime);
-  // Format Duration to MM:SS
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
 
   void setState(SquaresState newState) {
     _state = newState;
@@ -217,8 +206,6 @@ class GameProvider extends ChangeNotifier {
     _aiThinking = true;
     notifyListeners();
     try {
-            await Future.delayed(Duration(milliseconds: Random().nextInt(4500)));
-
       final move = await getStockfishMove(_game.fen, _gameLevel);
       if (move != null) {
         final newFen = makeMove(_game.fen, move, context);

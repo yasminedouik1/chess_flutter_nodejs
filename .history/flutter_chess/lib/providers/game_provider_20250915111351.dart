@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';
@@ -217,8 +216,6 @@ class GameProvider extends ChangeNotifier {
     _aiThinking = true;
     notifyListeners();
     try {
-            await Future.delayed(Duration(milliseconds: Random().nextInt(4500)));
-
       final move = await getStockfishMove(_game.fen, _gameLevel);
       if (move != null) {
         final newFen = makeMove(_game.fen, move, context);
