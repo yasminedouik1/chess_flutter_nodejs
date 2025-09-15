@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';
@@ -1217,10 +1218,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   @override
- void dispose() {
-    _whitesTimer?.cancel();
-    _blacksTimer?.cancel();
-    _waitingTimer?.cancel();
+  void dispose() {
     _stockfish?.dispose();
     super.dispose();
   }

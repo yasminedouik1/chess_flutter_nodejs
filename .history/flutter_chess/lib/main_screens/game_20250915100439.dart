@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_chess/main_screens/waiting_lobby.dart';
@@ -208,17 +209,11 @@ class GameScreen extends HookWidget {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (gameProvider.vsComputer) {
           gameProvider.resetGame(newGame: false, context: context);
-                    gameProvider.initStockfish().then((_) {
-
-             startTimer(
-              context,
-              isWhiteTimer: gameProvider.player == Squares.white,
-              onNewGame: () {},
-            );
-            if (gameProvider.player == Squares.black) {
-              gameProvider.makeAIMove(context);
-            }
-          });
+          startTimer(
+            context,
+            isWhiteTimer: gameProvider.player == Squares.white,
+            onNewGame: () {},
+          );
         } else {
           if (!gameProvider.isPlaying) {
             gameProvider.resetGame(newGame: false, context: context);

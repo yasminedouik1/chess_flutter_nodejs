@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';
@@ -667,40 +668,40 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // void _updateTimer(
-  //   BuildContext context,
-  //   Function onNewGame, {
-  //   required bool isWhite,
-  // }) {
-  //   Timer.periodic(const Duration(seconds: 1), (timer) {
-  //     if (isWhite && _whitesStopwatch?.isRunning == true) {
-  //       _whitesTime = Duration(seconds: _whitesTime.inSeconds - 1);
-  //       if (_whitesTime.inSeconds <= 0) {
-  //         timer.cancel();
-  //         gameOverDialog(
-  //           context: context,
-  //           timeOut: true,
-  //           userWon: !_isHumanWhite,
-  //           onNewGame: onNewGame,
-  //           reason: 'timeout',
-  //         );
-  //       }
-  //     } else if (!isWhite && _blacksStopwatch?.isRunning == true) {
-  //       _blacksTime = Duration(seconds: _blacksTime.inSeconds - 1);
-  //       if (_blacksTime.inSeconds <= 0) {
-  //         timer.cancel();
-  //         gameOverDialog(
-  //           context: context,
-  //           timeOut: true,
-  //           userWon: _isHumanWhite,
-  //           onNewGame: onNewGame,
-  //           reason: 'timeout',
-  //         );
-  //       }
-  //     }
-  //     notifyListeners();
-  //   });
-  // }
+  void _updateTimer(
+    BuildContext context,
+    Function onNewGame, {
+    required bool isWhite,
+  }) {
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (isWhite && _whitesStopwatch?.isRunning == true) {
+        _whitesTime = Duration(seconds: _whitesTime.inSeconds - 1);
+        if (_whitesTime.inSeconds <= 0) {
+          timer.cancel();
+          gameOverDialog(
+            context: context,
+            timeOut: true,
+            userWon: !_isHumanWhite,
+            onNewGame: onNewGame,
+            reason: 'timeout',
+          );
+        }
+      } else if (!isWhite && _blacksStopwatch?.isRunning == true) {
+        _blacksTime = Duration(seconds: _blacksTime.inSeconds - 1);
+        if (_blacksTime.inSeconds <= 0) {
+          timer.cancel();
+          gameOverDialog(
+            context: context,
+            timeOut: true,
+            userWon: _isHumanWhite,
+            onNewGame: onNewGame,
+            reason: 'timeout',
+          );
+        }
+      }
+      notifyListeners();
+    });
+  }
 
   void gameOverListener({
     required BuildContext context,
@@ -1217,10 +1218,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   @override
- void dispose() {
-    _whitesTimer?.cancel();
-    _blacksTimer?.cancel();
-    _waitingTimer?.cancel();
+  void dispose() {
     _stockfish?.dispose();
     super.dispose();
   }

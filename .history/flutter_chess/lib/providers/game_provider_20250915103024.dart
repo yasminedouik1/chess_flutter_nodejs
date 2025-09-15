@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';

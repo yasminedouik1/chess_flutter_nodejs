@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
 import 'package:flutter_chess/constants.dart';
@@ -452,12 +453,8 @@ class GameProvider extends ChangeNotifier {
       _gameId = ''; // No game ID needed for computer games
       _joinCode = '';
       _isHumanWhite = playerColor == PlayerColor.white;
-            _player = _isHumanWhite ? Squares.white : Squares.black;
-
       _whitesTime = Duration(minutes: whiteTime);
       _blacksTime = Duration(minutes: blackTime);
-       _savedWhitesTime = _whitesTime;
-      _savedBlacksTime = _blacksTime;
       _vsComputer = true;
       _isPlaying = true;
       
@@ -582,30 +579,37 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
-  // void startWhitesTime({
-  //   required BuildContext context,
-  //   required Function onNewGame,
-  // }) {
-  //   _whitesStopwatch = Stopwatch()..start();
-  //   _blacksStopwatch?.stop();
-  //   _updateTimer(context, onNewGame, isWhite: true);
-  // }
- void startWhitesTime({
+  void startWhitesTime({
     required BuildContext context,
     required Function onNewGame,
   }) {
-    if (_whitesTime <= Duration.zero) return;
     _whitesStopwatch = Stopwatch()..start();
     _blacksStopwatch?.stop();
-    _whitesTimer?.cancel();
-    _whitesTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_whitesTime > Duration.zero) {
-        _whitesTime -= const Duration(seconds: 1);
-        notifyListeners();
-      }
-      if (_whitesTime <= Duration.zero) {
-        _whitesTimer?.cancel();
-        if (context.mounted) {
+    _updateTimer(context, onNewGame, isWhite: true);
+  }
+
+  void startBlacksTime({
+    required BuildContext context,
+    required Function onNewGame,
+  }) {
+    _blacksStopwatch = Stopwatch()..start();
+    _whitesStopwatch?.stop();
+    _updateTimer(context, onNewGame, isWhite: false);
+  }
+
+  void pauseWhitesTimer() => _whitesStopwatch?.stop();
+  void pauseBlacksTimer() => _blacksStopwatch?.stop();
+
+  void _updateTimer(
+    BuildContext context,
+    Function onNewGame, {
+    required bool isWhite,
+  }) {
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (isWhite && _whitesStopwatch?.isRunning == true) {
+        _whitesTime = Duration(seconds: _whitesTime.inSeconds - 1);
+        if (_whitesTime.inSeconds <= 0) {
+          timer.cancel();
           gameOverDialog(
             context: context,
             timeOut: true,
@@ -614,33 +618,10 @@ class GameProvider extends ChangeNotifier {
             reason: 'timeout',
           );
         }
-      }
-    });
-  }
-  // void startBlacksTime({
-  //   required BuildContext context,
-  //   required Function onNewGame,
-  // }) {
-  //   _blacksStopwatch = Stopwatch()..start();
-  //   _whitesStopwatch?.stop();
-  //   _updateTimer(context, onNewGame, isWhite: false);
-  // }
- void startBlacksTime({
-    required BuildContext context,
-    required Function onNewGame,
-  }) {
-    if (_blacksTime <= Duration.zero) return;
-    _blacksStopwatch = Stopwatch()..start();
-    _whitesStopwatch?.stop();
-    _blacksTimer?.cancel();
-    _blacksTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_blacksTime > Duration.zero) {
-        _blacksTime -= const Duration(seconds: 1);
-        notifyListeners();
-      }
-      if (_blacksTime <= Duration.zero) {
-        _blacksTimer?.cancel();
-        if (context.mounted) {
+      } else if (!isWhite && _blacksStopwatch?.isRunning == true) {
+        _blacksTime = Duration(seconds: _blacksTime.inSeconds - 1);
+        if (_blacksTime.inSeconds <= 0) {
+          timer.cancel();
           gameOverDialog(
             context: context,
             timeOut: true,
@@ -650,57 +631,9 @@ class GameProvider extends ChangeNotifier {
           );
         }
       }
+      notifyListeners();
     });
   }
-
-  // void pauseWhitesTimer() => _whitesStopwatch?.stop();
-  // void pauseBlacksTimer() => _blacksStopwatch?.stop();
-  void pauseWhitesTimer() {
-    _whitesStopwatch?.stop();
-    _whitesTimer?.cancel();
-    notifyListeners();
-  }
-
-  void pauseBlacksTimer() {
-    _blacksStopwatch?.stop();
-    _blacksTimer?.cancel();
-    notifyListeners();
-  }
-
-  // void _updateTimer(
-  //   BuildContext context,
-  //   Function onNewGame, {
-  //   required bool isWhite,
-  // }) {
-  //   Timer.periodic(const Duration(seconds: 1), (timer) {
-  //     if (isWhite && _whitesStopwatch?.isRunning == true) {
-  //       _whitesTime = Duration(seconds: _whitesTime.inSeconds - 1);
-  //       if (_whitesTime.inSeconds <= 0) {
-  //         timer.cancel();
-  //         gameOverDialog(
-  //           context: context,
-  //           timeOut: true,
-  //           userWon: !_isHumanWhite,
-  //           onNewGame: onNewGame,
-  //           reason: 'timeout',
-  //         );
-  //       }
-  //     } else if (!isWhite && _blacksStopwatch?.isRunning == true) {
-  //       _blacksTime = Duration(seconds: _blacksTime.inSeconds - 1);
-  //       if (_blacksTime.inSeconds <= 0) {
-  //         timer.cancel();
-  //         gameOverDialog(
-  //           context: context,
-  //           timeOut: true,
-  //           userWon: _isHumanWhite,
-  //           onNewGame: onNewGame,
-  //           reason: 'timeout',
-  //         );
-  //       }
-  //     }
-  //     notifyListeners();
-  //   });
-  // }
 
   void gameOverListener({
     required BuildContext context,
@@ -1217,10 +1150,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   @override
- void dispose() {
-    _whitesTimer?.cancel();
-    _blacksTimer?.cancel();
-    _waitingTimer?.cancel();
+  void dispose() {
     _stockfish?.dispose();
     super.dispose();
   }
