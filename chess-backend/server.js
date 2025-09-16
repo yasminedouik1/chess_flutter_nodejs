@@ -106,11 +106,7 @@ io.on('connection', (socket) => {
       }
 
       // Validate it's the correct player's turn
-      const isWhitesTurn = game.creatorId === game.opponentId ? 
-        (game.creatorId === socket.userId) : 
-        (game.creatorId === socket.userId);
-      
-      if (isWhitesTurn !== isWhite) {
+      if (game.isWhitesTurn !== isWhite) {
         socket.emit('error', { message: 'Not your turn' });
         return;
       }

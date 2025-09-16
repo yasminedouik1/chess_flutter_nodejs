@@ -164,6 +164,7 @@ router.post('/join/:gameId', authenticate, async (req, res) => {
     req.io.to(gameId).emit('player_joined', {
       gameId,
       creatorId: game.creatorId,
+      opponentId: userId,
       opponentName: user.username,
       opponentImage: user.image || '',
       opponentRating: user.playerRating || 1200,
@@ -233,6 +234,7 @@ router.post('/join-by-code', authenticate, async (req, res) => {
     req.io.to(game.gameId).emit('player_joined', {
       gameId: game.gameId,
       creatorId: game.creatorId,
+      opponentId: userId,
       opponentName: user.username,
       opponentImage: user.image || '',
       opponentRating: user.playerRating || 1200,
@@ -425,6 +427,27 @@ router.post('/leave/:gameId', auth, async (req, res) => {
   } catch (e) {
     console.error('Error leaving game:', e);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// New endpoint to get game status
+router.get('/:gameId/status', authenticate, async (req, res) => {
+  const { gameId } = req.params;
+  try {
+    const game = await Game.findOne({ gameId });
+    if (!game) return res.status(404).json({ message: 'Game not found' });
+    res.json({
+      gameId: game.gameId,
+      creatorId: game.creatorId,
+      opponentId: game.opponentId,
+      isPlaying: game.isPlaying,
+      whiteTime: game.whiteTime,
+      blackTime: game.blackTime,
+      isPrivate: game.isPrivate,
+      joinCode: game.joinCode,
+    });
+  } catch (e) {
+    res.status(500).json({ message: 'Server error: ' + e.message });
   }
 });
 

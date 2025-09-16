@@ -94,7 +94,6 @@ class GameProvider extends ChangeNotifier {
   bool get isPlaying => _isPlaying;
   bool get drawOffered => _drawOffered;
   bool get rematchOffered => _rematchOffered;
-  Timer? get waitingTimer => _waitingTimer; // Add this line
 
   bool _drawOfferedByOpponent = false;
   bool get drawOfferedByOpponent => _drawOfferedByOpponent;
@@ -107,7 +106,6 @@ class GameProvider extends ChangeNotifier {
     final seconds = duration.inSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
-
 
   void setState(SquaresState newState) {
     _state = newState;
@@ -218,7 +216,7 @@ class GameProvider extends ChangeNotifier {
     _aiThinking = true;
     notifyListeners();
     try {
-            await Future.delayed(Duration(milliseconds: Random().nextInt(4500)));
+      await Future.delayed(Duration(milliseconds: Random().nextInt(4500)));
 
       final move = await getStockfishMove(_game.fen, _gameLevel);
       if (move != null) {
@@ -274,7 +272,7 @@ class GameProvider extends ChangeNotifier {
     if (newGame) {
       _player = _isHumanWhite ? Squares.white : Squares.black;
       _whitesScore = 0.0;
-    _blacksScore = 0.0;
+      _blacksScore = 0.0;
     }
     _game = bishop.Game(variant: bishop.Variant.standard());
     _state = _game.squaresState(_player);
@@ -308,8 +306,29 @@ class GameProvider extends ChangeNotifier {
     return result;
   }
 
+  // Future<void> setSquaresState() async {
+  //   _state = _game.squaresState(_player);
+  //   notifyListeners();
+  // }
   Future<void> setSquaresState() async {
-    _state = _game.squaresState(_player);
+    final legalMoves = _game
+        .generateLegalMoves()
+        .map((m) => _bishopMoveToSquaresMove(m))
+        .toList();
+    _state = SquaresState(
+      board: _game.squaresState(_player).board,
+      player: _player,
+      state:
+          _game.turn == Squares.white && _isHumanWhite ||
+              _game.turn == Squares.black && !_isHumanWhite
+          ? PlayState.ourTurn
+          : PlayState.theirTurn,
+      size: BoardSize(8, 8),
+      moves: legalMoves,
+    );
+    print(
+      'Updated SquaresState: PlayState=${_state.state}, LegalMoves=${legalMoves.length}',
+    );
     notifyListeners();
   }
 
@@ -383,8 +402,9 @@ class GameProvider extends ChangeNotifier {
         : level == 2
         ? GameDifficulty.medium
         : GameDifficulty.hard;
-       if (_stockfish != null) {
-      _stockfish!.stdin = 'setoption name Skill Level value ${(_gameLevel * 6).clamp(0, 20)}';
+    if (_stockfish != null) {
+      _stockfish!.stdin =
+          'setoption name Skill Level value ${(_gameLevel * 6).clamp(0, 20)}';
     }
     notifyListeners();
   }
@@ -410,19 +430,24 @@ class GameProvider extends ChangeNotifier {
       // Clear available games to prevent RangeError
       _availableGames.clear();
       notifyListeners();
-      
+
       final userId = authProvider.userId;
       if (userId == null) {
-        showSnackBar(context: context, content: 'User ID not available. Please log in again.');
+        showSnackBar(
+          context: context,
+          content: 'User ID not available. Please log in again.',
+        );
         _isLoading = false;
         notifyListeners();
         return;
       }
-      
+
       print('Creating game with token: ${token.substring(0, 20)}...');
       print('Creating game with userId: $userId');
-      print('Creating game with whiteTime: ${whiteTime * 60}, blackTime: ${blackTime * 60}, isPrivate: $isPrivate');
-      
+      print(
+        'Creating game with whiteTime: ${whiteTime * 60}, blackTime: ${blackTime * 60}, isPrivate: $isPrivate',
+      );
+
       final response = await ApiService.createGame(
         token: token,
         userId: userId,
@@ -437,13 +462,14 @@ class GameProvider extends ChangeNotifier {
       _blacksTime = Duration(seconds: blackTime * 60);
       _vsComputer = false;
       _isPlaying = false; // Game is created but not yet playing
-      print('Game created successfully with ID: $_gameId, joinCode: $_joinCode');
-      
+      print(
+        'Game created successfully with ID: $_gameId, joinCode: $_joinCode',
+      );
+
       // Initialize socket and join the game room for the creator
       ApiService.initializeSocket(token);
       ApiService.joinGameRoom(_gameId);
       initSocketListeners(context);
-      // Navigate to WaitingLobby, where timer and opponent joined listener will handle redirection
       Navigator.pushNamed(context, Constants.waitingLobby);
     } catch (e) {
       showSnackBar(context: context, content: 'Failed to create game: $e');
@@ -464,30 +490,33 @@ class GameProvider extends ChangeNotifier {
       // Clear available games to prevent RangeError
       _availableGames.clear();
       notifyListeners();
-      
+
       // Set up computer game
       _gameId = ''; // No game ID needed for computer games
       _joinCode = '';
       _isHumanWhite = playerColor == PlayerColor.white;
-            _player = _isHumanWhite ? Squares.white : Squares.black;
+      _player = _isHumanWhite ? Squares.white : Squares.black;
 
       _whitesTime = Duration(minutes: whiteTime);
       _blacksTime = Duration(minutes: blackTime);
-       _savedWhitesTime = _whitesTime;
+      _savedWhitesTime = _whitesTime;
       _savedBlacksTime = _blacksTime;
       _vsComputer = true;
       _isPlaying = true;
-      
+
       // Initialize Stockfish for AI
       await initStockfish();
-      
+
       // Reset game state
       resetGame(newGame: true, context: context);
-      
+
       // Navigate directly to game screen
       Navigator.pushNamed(context, Constants.gameScreen);
     } catch (e) {
-      showSnackBar(context: context, content: 'Failed to create computer game: $e');
+      showSnackBar(
+        context: context,
+        content: 'Failed to create computer game: $e',
+      );
     }
     _isLoading = false;
     notifyListeners();
@@ -527,7 +556,7 @@ class GameProvider extends ChangeNotifier {
         userId: userId,
       );
       print('Join game response: $gameData');
-      
+
       _gameId = gameData['gameId'];
       _opponentId = gameData['creatorId'];
       _opponentName = gameData['creatorName'];
@@ -538,14 +567,14 @@ class GameProvider extends ChangeNotifier {
       _isHumanWhite = false; // Joiner is black
       _player = Squares.black;
       _isPlaying = true;
-      
+
       // Initialize socket and join the game room
       ApiService.initializeSocket(token);
       ApiService.joinGameRoom(_gameId);
-      
+
       // Initialize socket listeners for the joiner
       initSocketListeners(context);
-      
+
       // Navigate to game screen immediately for the joiner
       if (context.mounted) {
         Navigator.pushNamedAndRemoveUntil(
@@ -607,7 +636,7 @@ class GameProvider extends ChangeNotifier {
   //   _blacksStopwatch?.stop();
   //   _updateTimer(context, onNewGame, isWhite: true);
   // }
- void startWhitesTime({
+  void startWhitesTime({
     required BuildContext context,
     required Function onNewGame,
   }) {
@@ -634,6 +663,7 @@ class GameProvider extends ChangeNotifier {
       }
     });
   }
+
   // void startBlacksTime({
   //   required BuildContext context,
   //   required Function onNewGame,
@@ -642,7 +672,7 @@ class GameProvider extends ChangeNotifier {
   //   _whitesStopwatch?.stop();
   //   _updateTimer(context, onNewGame, isWhite: false);
   // }
- void startBlacksTime({
+  void startBlacksTime({
     required BuildContext context,
     required Function onNewGame,
   }) {
@@ -719,154 +749,161 @@ class GameProvider extends ChangeNotifier {
   //   });
   // }
 
- void gameOverListener({
-  required BuildContext context,
-  required Function onNewGame,
-}) {
-  if (_game.gameOver) {
-    String reason = 'draw';
-    bool userWon = false;
-    if (_game.checkmate) {
-      reason = 'checkmate';
-      userWon = _vsComputer
-          ? (_isHumanWhite && _game.winner == Squares.white) ||
-            (!_isHumanWhite && _game.winner == Squares.black)
-          : (_isHumanWhite && _game.winner == Squares.white) ||
-            (!_isHumanWhite && _game.winner == Squares.black);
-    } else if (_game.stalemate || _game.insufficientMaterial) {
-      reason = 'draw';
-    }
-    _isPlaying = false;
-    if (!_vsComputer) {
-      final winnerId = _game.checkmate
-          ? (_game.winner == Squares.white
-              ? (_isHumanWhite ? context.read<AuthProvider>().user?.uid : _opponentId)
-              : (_isHumanWhite ? _opponentId : context.read<AuthProvider>().user?.uid))
-          : null;
-      ApiService.socket?.emit('game_over', {
-        'gameId': _gameId,
-        'reason': reason,
-        'winnerId': winnerId,
-      });
-    }
-    gameOverDialog(
-      context: context,
-      timeOut: false,
-      userWon: userWon,
-      onNewGame: onNewGame,
-      reason: reason,
-    );
-  }
-}
-
-void gameOverDialog({
-  required BuildContext context,
-  required bool timeOut,
-  required bool userWon,
-  required Function onNewGame,
-  String? reason,
-}) {
-  String resultsToShow = '';
-  double tempWhitesScore = _whitesScore;
-  double tempBlacksScore = _blacksScore;
-
-  if (timeOut) {
-    resultsToShow = userWon ? 'You won on time' : 'Opponent won on time';
-    if (userWon) {
-      if (_isHumanWhite) {
-        tempWhitesScore += 1.0;
-      } else {
-        tempBlacksScore += 1.0;
+  void gameOverListener({
+    required BuildContext context,
+    required Function onNewGame,
+  }) {
+    if (_game.gameOver) {
+      String reason = 'draw';
+      bool userWon = false;
+      if (_game.checkmate) {
+        reason = 'checkmate';
+        userWon = _vsComputer
+            ? (_isHumanWhite && _game.winner == Squares.white) ||
+                  (!_isHumanWhite && _game.winner == Squares.black)
+            : (_isHumanWhite && _game.winner == Squares.white) ||
+                  (!_isHumanWhite && _game.winner == Squares.black);
+      } else if (_game.stalemate || _game.insufficientMaterial) {
+        reason = 'draw';
       }
-    } else {
-      if (_isHumanWhite) {
-        tempBlacksScore += 1.0;
-      } else {
-        tempWhitesScore += 1.0;
+      _isPlaying = false;
+      if (!_vsComputer) {
+        final winnerId = _game.checkmate
+            ? (_game.winner == Squares.white
+                  ? (_isHumanWhite
+                        ? context.read<AuthProvider>().user?.uid
+                        : _opponentId)
+                  : (_isHumanWhite
+                        ? _opponentId
+                        : context.read<AuthProvider>().user?.uid))
+            : null;
+        ApiService.socket?.emit('game_over', {
+          'gameId': _gameId,
+          'reason': reason,
+          'winnerId': winnerId,
+        });
       }
-    }
-  } else if (reason == 'draw') {
-    resultsToShow = 'Draw';
-    tempWhitesScore += 0.5;
-    tempBlacksScore += 0.5;
-  } else if (reason == 'resign') {
-    resultsToShow = userWon ? 'Opponent resigned' : 'You resigned';
-    if (userWon) {
-      if (_isHumanWhite) {
-        tempWhitesScore += 1.0;
-      } else {
-        tempBlacksScore += 1.0;
-      }
-    } else {
-      if (_isHumanWhite) {
-        tempBlacksScore += 1.0;
-      } else {
-        tempWhitesScore += 1.0;
-      }
-    }
-  } else if (reason == 'checkmate') {
-    resultsToShow = userWon ? 'You won by checkmate' : 'Opponent won by checkmate';
-    if (userWon) {
-      if (_isHumanWhite) {
-        tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
-      } else {
-        tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
-      }
-    } else {
-      if (_isHumanWhite) {
-        tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
-      } else {
-        tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
-      }
+      gameOverDialog(
+        context: context,
+        timeOut: false,
+        userWon: userWon,
+        onNewGame: onNewGame,
+        reason: reason,
+      );
     }
   }
 
-  _whitesScore = tempWhitesScore;
-  _blacksScore = tempBlacksScore;
+  void gameOverDialog({
+    required BuildContext context,
+    required bool timeOut,
+    required bool userWon,
+    required Function onNewGame,
+    String? reason,
+  }) {
+    String resultsToShow = '';
+    double tempWhitesScore = _whitesScore;
+    double tempBlacksScore = _blacksScore;
 
-  if (context.mounted) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Game Over\n$_whitesScore - $_blacksScore',
-          textAlign: TextAlign.center,
-        ),
-        content: Text(resultsToShow, textAlign: TextAlign.center),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (context.mounted) {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  Constants.homeScreen,
-                  (route) => false,
-                );
-              }
-            },
-            child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+    if (timeOut) {
+      resultsToShow = userWon ? 'You won on time' : 'Opponent won on time';
+      if (userWon) {
+        if (_isHumanWhite) {
+          tempWhitesScore += 1.0;
+        } else {
+          tempBlacksScore += 1.0;
+        }
+      } else {
+        if (_isHumanWhite) {
+          tempBlacksScore += 1.0;
+        } else {
+          tempWhitesScore += 1.0;
+        }
+      }
+    } else if (reason == 'draw') {
+      resultsToShow = 'Draw';
+      tempWhitesScore += 0.5;
+      tempBlacksScore += 0.5;
+    } else if (reason == 'resign') {
+      resultsToShow = userWon ? 'Opponent resigned' : 'You resigned';
+      if (userWon) {
+        if (_isHumanWhite) {
+          tempWhitesScore += 1.0;
+        } else {
+          tempBlacksScore += 1.0;
+        }
+      } else {
+        if (_isHumanWhite) {
+          tempBlacksScore += 1.0;
+        } else {
+          tempWhitesScore += 1.0;
+        }
+      }
+    } else if (reason == 'checkmate') {
+      resultsToShow = userWon
+          ? 'You won by checkmate'
+          : 'Opponent won by checkmate';
+      if (userWon) {
+        if (_isHumanWhite) {
+          tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
+        } else {
+          tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
+        }
+      } else {
+        if (_isHumanWhite) {
+          tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
+        } else {
+          tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
+        }
+      }
+    }
+
+    _whitesScore = tempWhitesScore;
+    _blacksScore = tempBlacksScore;
+
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Game Over\n$_whitesScore - $_blacksScore',
+            textAlign: TextAlign.center,
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (context.mounted) {
-                resetGame(newGame: true, context: context);
-                onNewGame();
-              }
-            },
-            child: const Text(
-              'New Game',
-              style: TextStyle(color: Colors.white),
+          content: Text(resultsToShow, textAlign: TextAlign.center),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (context.mounted) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    Constants.homeScreen,
+                    (route) => false,
+                  );
+                }
+              },
+              child: const Text('Cancel', style: TextStyle(color: Colors.red)),
             ),
-          ),
-        ],
-      ),
-    );
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (context.mounted) {
+                  resetGame(newGame: true, context: context);
+                  onNewGame();
+                }
+              },
+              child: const Text(
+                'New Game',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    notifyListeners();
   }
-  notifyListeners();
-}
+
   void startWaitingTimer({required BuildContext context}) {
     int secondsLeft = 90;
     _waitingTimer?.cancel();
@@ -896,7 +933,7 @@ void gameOverDialog({
     print('Cancel game - token: ${token != null ? 'present' : 'null'}');
     print('Cancel game - gameId: $_gameId');
     print('Cancel game - isPlaying: $_isPlaying');
-    
+
     if (token != null && _gameId.isNotEmpty && !_isPlaying) {
       try {
         print('Attempting to cancel game with ID: $_gameId');
@@ -918,7 +955,7 @@ void gameOverDialog({
       if (token == null) print('  - Token is null');
       if (_gameId.isEmpty) print('  - Game ID is empty');
       if (_isPlaying) print('  - Game is already playing');
-      
+
       // Clean up local state even if we can't cancel on server
       _waitingTimer?.cancel();
       resetPvPFields();
@@ -930,7 +967,7 @@ void gameOverDialog({
     final token = context.read<AuthProvider>().token;
     print('Leave game - token: ${token != null ? 'present' : 'null'}');
     print('Leave game - gameId: $_gameId');
-    
+
     if (token != null && _gameId.isNotEmpty) {
       try {
         print('Attempting to leave/cancel game with ID: $_gameId');
@@ -952,7 +989,7 @@ void gameOverDialog({
       print('Cannot leave game - missing requirements');
       if (token == null) print('  - Token is null');
       if (_gameId.isEmpty) print('  - Game ID is empty');
-      
+
       // Clean up local state even if we can't leave on server
       _waitingTimer?.cancel();
       resetPvPFields();
@@ -972,61 +1009,7 @@ void gameOverDialog({
     _isPlaying = false;
     print('PvP fields reset - gameId: $_gameId, joinCode: $_joinCode');
   }
-  
-  // Removed polling method to check if opponent joined
-  // Future<void> checkOpponentJoined(BuildContext context) async {
-  //   if (_gameId.isEmpty || _isPlaying) return; // Only check if in waiting state
-  //
-  //   final authProvider = context.read<AuthProvider>();
-  //   final token = authProvider.token;
-  //   if (token == null) {
-  //     print('checkOpponentJoined: No token available.');
-  //     return;
-  //   }
-  //
-  //   try {
-  //     final gameStatus = await ApiService.getGameStatus(token: token, gameId: _gameId);
-  //     if (gameStatus['opponentId'] != null && gameStatus['isPlaying'] == true) {
-  //       print('checkOpponentJoined: Opponent found via polling! Game status: $gameStatus');
-  //       _opponentId = gameStatus['opponentId'];
-  //       _opponentName = gameStatus['opponentName'] ?? ''; // Assume backend provides opponentName
-  //       _opponentImage = gameStatus['opponentImage'] ?? ''; // Assume backend provides opponentImage
-  //       _opponentRating = gameStatus['opponentRating'] ?? 1200;
-  //       _whitesTime = Duration(seconds: gameStatus['whiteTime']);
-  //       _blacksTime = Duration(seconds: gameStatus['blackTime']);
-  //       _isPlaying = true;
-  //
-  //       // The creator is always white
-  //       _isHumanWhite = true;
-  //       _player = Squares.white;
-  //
-  //       _game = bishop.Game(variant: bishop.Variant.standard());
-  //       _state = SquaresState(
-  //         board: _game.squaresState(_player).board,
-  //         player: _player,
-  //         state: PlayState.ourTurn,
-  //         size: BoardSize(8, 8),
-  //         moves: _game.generateLegalMoves().map((m) => _bishopMoveToSquaresMove(m)).toList(),
-  //       );
-  //
-  //       _waitingTimer?.cancel(); // Cancel the waiting timer now that opponent is found
-  //
-  //       if (context.mounted) {
-  //         Navigator.pushNamedAndRemoveUntil(
-  //           context,
-  //           Constants.gameScreen,
-  //           (route) => false,
-  //         );
-  //       }
-  //       notifyListeners();
-  //     } else {
-  //       print('checkOpponentJoined: Opponent not yet found.');
-  //     }
-  //   } catch (e) {
-  //     print('checkOpponentJoined error: $e');
-  //   }
-  // }
-  
+
   void offerDraw(BuildContext context) {
     if (_vsComputer) {
       showSnackBar(context: context, content: 'Draw not available vs AI');
@@ -1094,31 +1077,30 @@ void gameOverDialog({
     ApiService.onOpponentJoined(context, (data) {
       print('Opponent joined - data: $data');
       _gameId = data['gameId'];
-      _opponentId = data['opponentId'];
       _opponentName = data['opponentName'];
       _opponentImage = data['opponentImage'];
       _opponentRating = data['opponentRating'];
       _whitesTime = Duration(seconds: data['whiteTime']);
       _blacksTime = Duration(seconds: data['blackTime']);
       _isPlaying = true;
-      print('Creator\'s _isPlaying after opponent joined: $_isPlaying'); // Added log
-      // Determine if the current user is white or black based on who created the game
-      _isHumanWhite = data['creatorId'] == context.read<AuthProvider>().userId;
+      isHumanWhite = data['creatorId'] == context.read<AuthProvider>().userId
+          ? true
+          : false;
       _player = _isHumanWhite ? Squares.white : Squares.black;
 
       // Reset the game to initial position
       _game = bishop.Game(variant: bishop.Variant.standard());
-      // Set initial state for creator (white) to their turn, joiner (black) to opponent's turn
       _state = SquaresState(
         board: _game.squaresState(_player).board,
         player: _player,
         state: _isHumanWhite ? PlayState.ourTurn : PlayState.theirTurn,
         size: BoardSize(8, 8),
-        moves: _game.generateLegalMoves().map((m) => _bishopMoveToSquaresMove(m)).toList(),
+        moves: _game
+            .generateLegalMoves()
+            .map((m) => _bishopMoveToSquaresMove(m))
+            .toList(),
       );
-      _waitingTimer?.cancel(); // Cancel waiting timer on opponent joined
-
-      print('Attempting navigation for creator (context.mounted: ${context.mounted})'); // Added log
+       print('Opponent joined: isHumanWhite=$_isHumanWhite, PlayState=${_state.state}, LegalMoves=${_state.moves.length}');
       // Navigate both players to the game screen
       if (context.mounted) {
         Navigator.pushNamedAndRemoveUntil(
@@ -1126,9 +1108,6 @@ void gameOverDialog({
           Constants.gameScreen,
           (route) => false,
         );
-        print('Navigation successful for creator.'); // Added log
-      } else {
-        print('Navigation skipped for creator because context is not mounted.'); // Added log
       }
       notifyListeners();
     });
@@ -1137,27 +1116,26 @@ void gameOverDialog({
       print('Received move from opponent: $data');
       final fen = data['fen'];
       final isWhiteMove = data['isWhite'];
-      
+
       // Load the new FEN position into the game
       _game.loadFen(fen);
-      
+
       // Generate legal moves for the current player
       final legalMoves = _game
           .generateLegalMoves()
           .map((m) => _bishopMoveToSquaresMove(m))
           .toList();
-      
+
       // Update the state with the new position
-      setState(
-        SquaresState(
-          board: _game.squaresState(_player).board,
-          player: _isHumanWhite ? Squares.white : Squares.black,
-          state: isWhiteMove == _isHumanWhite ? PlayState.ourTurn : PlayState.theirTurn,
-          size: BoardSize(8, 8),
-          moves: legalMoves,
-        ),
+     _state = SquaresState(
+        board: _game.squaresState(_player).board,
+        player: _player,
+        state: isWhiteMove == _isHumanWhite ? PlayState.theirTurn : PlayState.ourTurn,
+        size: BoardSize(8, 8),
+        moves: legalMoves,
       );
-      
+      print('Move received: PlayState=${_state.state}, LegalMoves=${legalMoves.length}');
+
       // Switch timers
       if (isWhiteMove) {
         pauseBlacksTimer();
@@ -1166,7 +1144,7 @@ void gameOverDialog({
         pauseWhitesTimer();
         startBlacksTime(context: context, onNewGame: () {});
       }
-      
+
       notifyListeners();
     });
 
@@ -1174,7 +1152,7 @@ void gameOverDialog({
       print('Game over received: $data');
       final reason = data['reason'];
       final winnerSide = data['winnerSide'];
-      
+
       // Determine if current user won
       bool userWon = false;
       if (winnerSide != null) {
@@ -1184,7 +1162,7 @@ void gameOverDialog({
           userWon = true;
         }
       }
-      
+
       gameOverDialog(
         context: context,
         timeOut: reason == 'timeout',
@@ -1218,6 +1196,8 @@ void gameOverDialog({
       _whitesTime = Duration(seconds: data['whiteTime']);
       _blacksTime = Duration(seconds: data['blackTime']);
       _isHumanWhite = !_isHumanWhite; // Swap sides
+            _player = _isHumanWhite ? Squares.white : Squares.black;
+      _rematchOffered = true;
       resetGame(newGame: true, context: context);
       Navigator.pushReplacementNamed(context, Constants.gameScreen);
       notifyListeners();
@@ -1254,15 +1234,7 @@ void gameOverDialog({
         _opponentRating = 1200;
         _isPlaying = false;
         if (context.mounted) {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            Constants.homeScreen,
-            (route) => false,
-          );
-          showSnackBar(
-            context: context,
-            content: 'Opponent left the game',
-          );
+          showSnackBar(context: context, content: 'Opponent left the game');
         }
         notifyListeners();
       }
@@ -1282,29 +1254,16 @@ void gameOverDialog({
   }) async {
     final authProvider = context.read<AuthProvider>();
     final token = authProvider.token;
-    // Ensure it's the current player's turn before allowing a move in multiplayer
-    if (!_vsComputer &&
-        _gameId.isNotEmpty &&
-        token != null &&
-        ((_isHumanWhite && _state.state == PlayState.ourTurn) ||
-            (!_isHumanWhite && _state.state == PlayState.theirTurn))) {
-      final isWhite = _isHumanWhite; // This should be `_player == Squares.white` to accurately represent whose turn it is
+    if (!_vsComputer && _gameId.isNotEmpty && token != null) {
+      final isWhite = _isHumanWhite;
       final result = makeSquaresMove(move);
       if (result) {
-        // After a move, it becomes the opponent's turn
-        _state = SquaresState(
-          board: _game.squaresState(_player).board,
-          player: _player,
-          state: isWhite ? PlayState.theirTurn : PlayState.ourTurn,
-          size: BoardSize(8, 8),
-          moves: _game.generateLegalMoves().map((m) => _bishopMoveToSquaresMove(m)).toList(),
-        );
         notifyListeners();
-        // Removed await setSquaresState(); because state is set manually above
+        await setSquaresState();
         ApiService.socket?.emit('move', {
           'gameId': _gameId,
           'move': move.toString(),
-          'isWhite': _player == Squares.white, // Emit the color of the player who just moved
+          'isWhite': isWhite,
           'fen': _game.fen,
         });
         if (isWhite) {
@@ -1315,29 +1274,17 @@ void gameOverDialog({
           startWhitesTime(context: context, onNewGame: () {});
         }
         gameOverListener(context: context, onNewGame: () {});
-      } else {
-        showSnackBar(context: context, content: 'Invalid move');
       }
     } else if (token == null) {
       showSnackBar(
         context: context,
         content: 'No token available. Please log in.',
       );
-    } else if (_vsComputer) {
-      // For computer games, the move is handled in handleComputerMove in game.dart
-      final result = makeSquaresMove(move);
-      if (result) {
-        notifyListeners();
-        await setSquaresState();
-        gameOverListener(context: context, onNewGame: () {});
-      }
-    } else {
-      showSnackBar(context: context, content: 'It\'s not your turn.');
     }
   }
 
   @override
- void dispose() {
+  void dispose() {
     _whitesTimer?.cancel();
     _blacksTimer?.cancel();
     _waitingTimer?.cancel();

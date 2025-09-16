@@ -351,6 +351,19 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> getGameStatus({required String token, required String gameId}) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/games/$gameId/status'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final data = _safeDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['message'] ?? 'Failed to get game status');
+    }
+  }
+
   static void disposeSocket() {
     socket?.disconnect();
     socket = null;

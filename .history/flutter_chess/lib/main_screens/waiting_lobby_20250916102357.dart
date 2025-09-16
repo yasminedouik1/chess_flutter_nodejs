@@ -13,7 +13,7 @@ class WaitingLobby extends StatefulWidget {
 }
 
 class _WaitingLobbyState extends State<WaitingLobby> {
-  // Timer? _pollingTimer; // Removed polling timer
+  Timer? _pollingTimer;
 
   @override
   void initState() {
@@ -21,39 +21,20 @@ class _WaitingLobbyState extends State<WaitingLobby> {
     // Initialize socket listeners in GameProvider
     context.read<GameProvider>().initSocketListeners(context);
     context.read<GameProvider>().startWaitingTimer(context: context);
-    // _startPolling(); // Removed polling call
-
-    // Add listener for game status changes
-    context.read<GameProvider>().addListener(_gameStatusListener);
+    _startPolling();
   }
 
-  void _gameStatusListener() {
-    final gameProvider = context.read<GameProvider>();
-    if (gameProvider.isPlaying) {
-      // If a player has joined, navigate to the game screen
-      _navigateToGameScreen();
-    }
+  void _startPolling() {
+    _pollingTimer?.cancel(); // Cancel any existing timer
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      // Periodically check for opponent joined status
+      await context.read<GameProvider>().checkOpponentJoined(context);
+    });
   }
-
-  void _navigateToGameScreen() {
-    if (context.mounted) {
-      Navigator.pushReplacementNamed(context, Constants.gameScreen);
-    }
-  }
-
-  // Removed _startPolling method
-  // void _startPolling() {
-  //   _pollingTimer?.cancel(); // Cancel any existing timer
-  //   _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-  //     // Periodically check for opponent joined status
-  //     await context.read<GameProvider>().checkOpponentJoined(context);
-  //   });
-  // }
 
   @override
   void dispose() {
-    // _pollingTimer?.cancel(); // Cancel polling timer when leaving the lobby
-    context.read<GameProvider>().removeListener(_gameStatusListener); // Remove the listener
+    _pollingTimer?.cancel(); // Cancel polling timer when leaving the lobby
     // Cancel the game when the widget is disposed
     final gameProvider = context.read<GameProvider>();
     gameProvider.waitingTimer?.cancel(); // Cancel the waiting timer

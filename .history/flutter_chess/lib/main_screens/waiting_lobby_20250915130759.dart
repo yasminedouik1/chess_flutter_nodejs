@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
@@ -13,51 +11,11 @@ class WaitingLobby extends StatefulWidget {
 }
 
 class _WaitingLobbyState extends State<WaitingLobby> {
-  // Timer? _pollingTimer; // Removed polling timer
-
-  @override
-  void initState() {
-    super.initState();
-    // Initialize socket listeners in GameProvider
-    context.read<GameProvider>().initSocketListeners(context);
-    context.read<GameProvider>().startWaitingTimer(context: context);
-    // _startPolling(); // Removed polling call
-
-    // Add listener for game status changes
-    context.read<GameProvider>().addListener(_gameStatusListener);
-  }
-
-  void _gameStatusListener() {
-    final gameProvider = context.read<GameProvider>();
-    if (gameProvider.isPlaying) {
-      // If a player has joined, navigate to the game screen
-      _navigateToGameScreen();
-    }
-  }
-
-  void _navigateToGameScreen() {
-    if (context.mounted) {
-      Navigator.pushReplacementNamed(context, Constants.gameScreen);
-    }
-  }
-
-  // Removed _startPolling method
-  // void _startPolling() {
-  //   _pollingTimer?.cancel(); // Cancel any existing timer
-  //   _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-  //     // Periodically check for opponent joined status
-  //     await context.read<GameProvider>().checkOpponentJoined(context);
-  //   });
-  // }
-
   @override
   void dispose() {
-    // _pollingTimer?.cancel(); // Cancel polling timer when leaving the lobby
-    context.read<GameProvider>().removeListener(_gameStatusListener); // Remove the listener
     // Cancel the game when the widget is disposed
     final gameProvider = context.read<GameProvider>();
-    gameProvider.waitingTimer?.cancel(); // Cancel the waiting timer
-    if (gameProvider.gameId.isNotEmpty && !gameProvider.isPlaying) {
+    if (gameProvider.gameId.isNotEmpty) {
       gameProvider.cancelGame(context);
     }
     super.dispose();
@@ -105,15 +63,6 @@ class _WaitingLobbyState extends State<WaitingLobby> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 40),
-            Consumer<GameProvider>(
-              builder: (context, gameProvider, child) {
-                return Text(
-                  'Time left: ${gameProvider.waitingText} seconds',
-                  style: const TextStyle(fontSize: 18, color: Colors.white),
-                );
-              },
-            ),
-            const SizedBox(height: 20),
             const CircularProgressIndicator(),
             const SizedBox(height: 40),
             ElevatedButton(
