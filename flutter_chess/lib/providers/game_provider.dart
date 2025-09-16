@@ -539,6 +539,13 @@ class GameProvider extends ChangeNotifier {
       _player = Squares.black;
       _isPlaying = true;
       
+      // Initialize the game board for the joiner
+      _game = bishop.Game(variant: bishop.Variant.standard());
+      _state = _game.squaresState(_player);
+
+      // Start black's timer since the joiner is black and waiting for white's first move
+      startBlacksTime(context: context, onNewGame: () {});
+      
       // Initialize socket and join the game room
       ApiService.initializeSocket(token);
       ApiService.joinGameRoom(_gameId);
@@ -1106,17 +1113,16 @@ void gameOverDialog({
       _isHumanWhite = data['creatorId'] == context.read<AuthProvider>().userId;
       _player = _isHumanWhite ? Squares.white : Squares.black;
 
-      // Reset the game to initial position
-      _game = bishop.Game(variant: bishop.Variant.standard());
-      // Set initial state for creator (white) to their turn, joiner (black) to opponent's turn
-      _state = SquaresState(
-        board: _game.squaresState(_player).board,
-        player: _player,
-        state: _isHumanWhite ? PlayState.ourTurn : PlayState.theirTurn,
-        size: BoardSize(8, 8),
-        moves: _game.generateLegalMoves().map((m) => _bishopMoveToSquaresMove(m)).toList(),
-      );
-      _waitingTimer?.cancel(); // Cancel waiting timer on opponent joined
+      // Reset the game to initial position and set up board state
+      resetGame(newGame: true, context: context);
+
+      // Start white's timer if the current player is white (creator)
+      if (_isHumanWhite) {
+        startWhitesTime(context: context, onNewGame: () {});
+      } else {
+        // If the joiner is black, start the blacksTime
+        startBlacksTime(context: context, onNewGame: () {});
+      }
 
       print('Attempting navigation for creator (context.mounted: ${context.mounted})'); // Added log
       // Navigate both players to the game screen
@@ -1147,12 +1153,22 @@ void gameOverDialog({
           .map((m) => _bishopMoveToSquaresMove(m))
           .toList();
       
+      // Determine if it's our turn after the opponent's move
+      PlayState newPlayState;
+      if ((isWhiteMove && _isHumanWhite) || (!isWhiteMove && !_isHumanWhite)) {
+        // Opponent just moved, so it's our turn now
+        newPlayState = PlayState.ourTurn;
+      } else {
+        // We just moved, so it's their turn now (this case shouldn't be reached here if it's opponent's move)
+        newPlayState = PlayState.theirTurn;
+      }
+
       // Update the state with the new position
       setState(
         SquaresState(
           board: _game.squaresState(_player).board,
-          player: _isHumanWhite ? Squares.white : Squares.black,
-          state: isWhiteMove == _isHumanWhite ? PlayState.ourTurn : PlayState.theirTurn,
+          player: _player,
+          state: newPlayState,
           size: BoardSize(8, 8),
           moves: legalMoves,
         ),
@@ -1160,11 +1176,11 @@ void gameOverDialog({
       
       // Switch timers
       if (isWhiteMove) {
-        pauseBlacksTimer();
-        startWhitesTime(context: context, onNewGame: () {});
+        pauseWhitesTimer(); // White just moved, pause white's timer
+        startBlacksTime(context: context, onNewGame: () {}); // Start black's timer
       } else {
-        pauseWhitesTimer();
-        startBlacksTime(context: context, onNewGame: () {});
+        pauseBlacksTimer(); // Black just moved, pause black's timer
+        startWhitesTime(context: context, onNewGame: () {}); // Start white's timer
       }
       
       notifyListeners();
