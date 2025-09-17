@@ -116,18 +116,20 @@ io.on('connection', (socket) => {
       game.isWhitesTurn = !isWhite;
       await game.save();
 
+      console.log(`Server: Emitting move with whiteTime: ${game.whiteTime}, blackTime: ${game.blackTime}`); // Add log
       // Broadcast move to all players in the room
       io.to(gameId).emit('move', { 
         gameId: gameId,
         move: move, 
-        isWhite: !isWhite, // Next player's turn
-        fen: fen
+        isWhiteTurn: !isWhite, // Next player's turn
+        fen: fen,
+        whiteTime: game.whiteTime, // Include current white time
+        blackTime: game.blackTime, // Include current black time
       });
 
       console.log(`Move broadcasted in game ${gameId}: ${move} by ${isWhite ? 'white' : 'black'}`);
 
       // Check game over conditions
-      const Chess = require('chess.js');
       const chess = new Chess(fen);
       if (chess.isGameOver()) {
         let result, winnerSide;
@@ -305,28 +307,58 @@ io.on('connection', (socket) => {
   // Disconnect: Handle game cleanup
   socket.on('disconnect', async () => {
     console.log(`User ${socket.userId} disconnected`);
+    if (!socket.userId) {
+      console.error('Disconnect handler: socket.userId is missing.');
+      return; // Cannot process disconnect without userId
+    }
+
+    console.log('Currently connected users:');
+    const connectedSockets = await io.fetchSockets();
+    connectedSockets.forEach(s => {
+        console.log(`- Socket ID: ${s.id}, User ID: ${s.userId}`);
+    });
+
     try {
       // Find games where this user is the creator and not playing
-      const creatorGames = await Game.find({ 
-        creatorId: socket.userId, 
-        isPlaying: false 
+      const creatorGames = await Game.find({
+        creatorId: socket.userId,
+        isPlaying: false, // Only delete if the game has not started yet
       });
       
       // Delete creator's waiting games
       for (const game of creatorGames) {
         await Game.deleteOne({ gameId: game.gameId });
-        io.to(game.gameId).emit('game_deleted', { 
-          gameId: game.gameId, 
-          reason: 'creator_disconnected' 
+        io.to(game.gameId).emit('game_deleted', {
+          gameId: game.gameId,
+          reason: 'creator_disconnected'
         });
         io.to('lobby').emit('game_removed', { gameId: game.gameId });
         console.log(`Deleted game ${game.gameId} - creator disconnected`);
       }
       
+      // Find games where this user is a creator AND is playing (i.e., opponent disconnected or left during an active game)
+      const playingCreatorGames = await Game.find({
+        creatorId: socket.userId,
+        isPlaying: true,
+      });
+
+      // Handle active games where the creator disconnects
+      for (const game of playingCreatorGames) {
+        game.result = game.creatorId === socket.userId ? 'opponent_wins_by_disconnection' : 'creator_wins_by_disconnection';
+        game.isPlaying = false; // Mark game as not playing
+        await game.save();
+        io.to(game.gameId).emit('game_over', {
+          gameId: game.gameId,
+          reason: 'player_disconnected',
+          winnerSide: game.creatorId === socket.userId ? 'black' : 'white', // The other player wins
+        });
+        console.log(`Game ${game.gameId} ended - ${socket.userId} disconnected during active game.`);
+      }
+      
       // Find games where this user is the opponent
-      const opponentGames = await Game.find({ 
-        opponentId: socket.userId, 
-        isPlaying: true 
+      const opponentGames = await Game.find({
+        opponentId: socket.userId,
+        isPlaying: true
       });
       
       // Reset opponent games to waiting state

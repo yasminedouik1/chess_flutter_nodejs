@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
@@ -57,7 +55,7 @@ class _WaitingLobbyState extends State<WaitingLobby> {
     // Cancel the game when the widget is disposed
     final gameProvider = context.read<GameProvider>();
     gameProvider.waitingTimer?.cancel(); // Cancel the waiting timer
-    if (gameProvider.gameId.isNotEmpty && !gameProvider.isPlaying && gameProvider.isManuallyCancelling) { // Only cancel if explicitly marked
+    if (gameProvider.gameId.isNotEmpty && !gameProvider.isPlaying) {
       gameProvider.cancelGame(context);
     }
     super.dispose();
@@ -72,10 +70,13 @@ class _WaitingLobbyState extends State<WaitingLobby> {
       onPopInvoked: (didPop) async {
         if (!didPop) {
           // User is trying to go back, cancel the game
-          gameProvider.setIsManuallyCancelling(true); // Set flag to true
           await gameProvider.cancelGame(context);
           if (context.mounted) {
-            Navigator.pop(context);
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              Constants.homeScreen,
+              (route) => false,
+            );
           }
         }
       },
@@ -119,7 +120,6 @@ class _WaitingLobbyState extends State<WaitingLobby> {
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () async {
-                gameProvider.setIsManuallyCancelling(true); // Set flag to true
                 await gameProvider.cancelGame(context);
                 if (context.mounted) {
                   Navigator.pushNamedAndRemoveUntil(

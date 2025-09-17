@@ -47,30 +47,10 @@ class GameScreen extends HookWidget {
     }
 
     Future<void> handleMultiplayerMove(BuildContext context, Move move) async {
-      final result = gameProvider.makeSquaresMove(move);
-      if (result) {
-        final newFen = gameProvider.state.board.fen;
-        
-        // Send move to backend via socket
-        ApiService.socket?.emit('move', {
-          'gameId': gameProvider.gameId,
-          'move': move.toString(),
-          'isWhite': gameProvider.player == Squares.white,
-          'fen': newFen,
-        });
-        
-        // Update local state
-        await gameProvider.setSquaresState();
-        
-        // Switch timer
-        if (gameProvider.player == Squares.white) {
-          gameProvider.pauseWhitesTimer();
-          startTimer(context, isWhiteTimer: false, onNewGame: () {});
-        } else {
-          gameProvider.pauseBlacksTimer();
-          startTimer(context, isWhiteTimer: true, onNewGame: () {});
-        }
-      }
+      // This method now primarily sends the move to the server.
+      // The server will handle game state updates and timer synchronization
+      // and broadcast the updated state back to all clients.
+      await gameProvider.playMove(context: context, move: move); // Let GameProvider handle the emission and local state
     }
 
     void checkGameOverListener(BuildContext context) {
@@ -237,7 +217,7 @@ class GameScreen extends HookWidget {
         gameProvider.pauseWhitesTimer();
         gameProvider.pauseBlacksTimer();
         if (!gameProvider.vsComputer) {
-          ApiService.disposeSocket();
+          // ApiService.disposeSocket(); // Removed to prevent premature disconnections
         }
       };
     }, []);

@@ -161,9 +161,13 @@ router.post('/join/:gameId', authenticate, async (req, res) => {
     game.opponentImage = user.image || '';
     game.opponentRating = user.playerRating || 1200;
     await game.save();
+    console.log(`Game ${gameId} - isPlaying after opponent joined: ${game.isPlaying}`); // Add log
     req.io.to(gameId).emit('player_joined', {
       gameId,
       creatorId: game.creatorId,
+      creatorName: game.creatorName, // Add creator's name
+      creatorImage: game.creatorImage, // Add creator's image
+      creatorRating: game.creatorRating, // Add creator's rating
       opponentId: userId,
       opponentName: user.username,
       opponentImage: user.image || '',
@@ -209,123 +213,6 @@ router.post('/cancel/:gameId', authenticate, async (req, res) => {
 
 
 // Join a game by code (for private games)
-router.post('/join-by-code', authenticate, async (req, res) => {
-  const { joinCode, userId } = req.body;
-  try {
-    if (userId !== req.user.id) {
-      return res.status(403).json({ message: 'User ID does not match token' });
-    }
-    const game = await Game.findOneAndUpdate(
-      { joinCode, isPlaying: false, isPrivate: true, creatorId: { $ne: userId } },
-      { $set: { isPlaying: true, opponentId: userId } },
-      { new: true }
-    );
-    if (!game) {
-      return res.status(404).json({ message: 'Game not found, already started, or you are the creator' });
-    }
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    game.opponentName = user.username;
-    game.opponentImage = user.image || '';
-    game.opponentRating = user.playerRating || 1200;
-    await game.save();
-    req.io.to(game.gameId).emit('player_joined', {
-      gameId: game.gameId,
-      creatorId: game.creatorId,
-      opponentId: userId,
-      opponentName: user.username,
-      opponentImage: user.image || '',
-      opponentRating: user.playerRating || 1200,
-      whiteTime: game.whiteTime,
-      blackTime: game.blackTime,
-      increment: game.increment,
-    });
-    res.json({
-      gameId: game.gameId,
-      creatorId: game.creatorId,
-      creatorName: game.creatorName,
-      creatorImage: game.creatorImage,
-      creatorRating: game.creatorRating,
-      opponentId: userId,
-      opponentName: user.username,
-      opponentImage: user.image || '',
-      opponentRating: user.playerRating || 1200,
-      whiteTime: game.whiteTime,
-      blackTime: game.blackTime,
-      increment: game.increment,
-    });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error: ' + err.message });
-  }
-});
-
-// router.delete('/:id', auth, async (req, res) => {
-//   try {
-//     const game = await Game.findById(req.params.id);
-//     if (!game) return res.status(404).json({ message: 'Game not found' });
-//     if (game.creatorId !== req.user.userId) {
-//       return res.status(403).json({ message: 'Only the game creator can cancel' });
-//     }
-//     await game.deleteOne();
-//     req.io.emit('game_updated', { gameId: req.params.id, status: 'cancelled' });
-//     res.json({ message: 'Game cancelled' });
-//   } catch (err) {
-//     res.status(500).json({ message: 'Failed to cancel game: ' + err.message });
-//   }
-// });
-
-router.post('/join/:id', auth, async (req, res) => {
-  const { id: gameId } = req.params;
-  const userId = req.userId;
-  try {
-    const game = await Game.findOneAndUpdate(
-      { gameId, isPlaying: false, isPrivate: false, creatorId: { $ne: userId } },
-      { $set: { isPlaying: true, opponentId: userId } },
-      { new: true }
-    );
-    if (!game) {
-      return res.status(404).json({ message: 'Game not found, already started, or you are the creator' });
-    }
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    game.opponentName = user.username;
-    game.opponentImage = user.image || '';
-    game.opponentRating = user.playerRating || 1200;
-    await game.save();
-    req.io.to(game.gameId).emit('player_joined', {
-      gameId: game.gameId,
-      opponentId: userId,
-      opponentName: user.username,
-      opponentImage: user.image || '',
-      opponentRating: user.playerRating || 1200,
-      whiteTime: game.whiteTime,
-      blackTime: game.blackTime,
-      increment: game.increment,
-    });
-    res.json({
-      gameId: game.gameId,
-      creatorId: game.creatorId,
-      creatorName: game.creatorName,
-      creatorImage: game.creatorImage,
-      creatorRating: game.creatorRating,
-      opponentId: userId,
-      opponentName: user.username,
-      opponentImage: user.image || '',
-      opponentRating: user.playerRating || 1200,
-      whiteTime: game.whiteTime,
-      blackTime: game.blackTime,
-      increment: game.increment,
-    });
-  } catch (err) {
-    console.error('Error joining game:', err);
-    res.status(500).json({ message: 'Server error: ' + err.message });
-  }
-});
-
 router.post('/join-by-code', auth, async (req, res) => {
   const { joinCode } = req.body;
   const userId = req.userId;
@@ -349,8 +236,13 @@ router.post('/join-by-code', auth, async (req, res) => {
     game.opponentImage = user.image || '';
     game.opponentRating = user.playerRating || 1200;
     await game.save();
+    console.log(`Game ${game.gameId} - isPlaying after opponent joined (by code): ${game.isPlaying}`); // Add log
     req.io.to(game.gameId).emit('player_joined', {
       gameId: game.gameId,
+      creatorId: game.creatorId,
+      creatorName: game.creatorName, // Add creator's name
+      creatorImage: game.creatorImage, // Add creator's image
+      creatorRating: game.creatorRating, // Add creator's rating
       opponentId: userId,
       opponentName: user.username,
       opponentImage: user.image || '',
@@ -376,22 +268,6 @@ router.post('/join-by-code', auth, async (req, res) => {
   } catch (err) {
     console.error('Error joining game by code:', err);
     res.status(500).json({ message: 'Server error: ' + err.message });
-  }
-});
-
-router.post('/cancel/:gameId', auth, async (req, res) => {
-  const { gameId } = req.params;
-  try {
-    const game = await Game.findOne({ gameId, creatorId: req.userId, isPlaying: false });
-    if (!game) {
-      return res.status(400).json({ message: 'Cannot cancel game: not found or already started' });
-    }
-    await Game.deleteOne({ gameId });
-    req.io.to('lobby').emit('game_cancelled', { gameId });
-    res.json({ message: 'Game cancelled' });
-  } catch (e) {
-    console.error('Error cancelling game:', e);
-    res.status(500).json({ message: 'Server error' });
   }
 });
 

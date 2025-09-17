@@ -380,6 +380,7 @@ class ApiService {
     socket!.onConnect((_) => print('Socket connected'));
     socket!.onConnectError((data) => print('Socket connection error: $data'));
     socket!.onError((data) => print('Socket error: $data'));
+    socket!.onDisconnect((reason) => print('Socket disconnected: $reason'));
   }
 
   static void joinGameRoom(String gameId) {

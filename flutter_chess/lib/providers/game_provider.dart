@@ -58,6 +58,7 @@ class GameProvider extends ChangeNotifier {
   bool _isPlaying = false;
   String _userId = '';
   bool _isPrivate = false; // Added for private rooms
+  bool _isManuallyCancelling = false; // New flag
 
   Stopwatch? _whitesStopwatch;
   Stopwatch? _blacksStopwatch;
@@ -88,13 +89,12 @@ class GameProvider extends ChangeNotifier {
   double get blacksScore => _blacksScore;
   bool get vsComputer => _vsComputer;
   bool get isPrivate => _isPrivate;
-
   bool get isLoading => _isLoading;
-
   bool get isPlaying => _isPlaying;
   bool get drawOffered => _drawOffered;
   bool get rematchOffered => _rematchOffered;
-  Timer? get waitingTimer => _waitingTimer; // Add this line
+  Timer? get waitingTimer => _waitingTimer;
+  bool get isManuallyCancelling => _isManuallyCancelling; // Getter for new flag
 
   bool _drawOfferedByOpponent = false;
   bool get drawOfferedByOpponent => _drawOfferedByOpponent;
@@ -440,7 +440,9 @@ class GameProvider extends ChangeNotifier {
       print('Game created successfully with ID: $_gameId, joinCode: $_joinCode');
       
       // Initialize socket and join the game room for the creator
-      ApiService.initializeSocket(token);
+      if (ApiService.socket == null || !ApiService.socket!.connected) {
+        ApiService.initializeSocket(token);
+      }
       ApiService.joinGameRoom(_gameId);
       initSocketListeners(context);
       // Navigate to WaitingLobby, where timer and opponent joined listener will handle redirection
@@ -547,7 +549,9 @@ class GameProvider extends ChangeNotifier {
       startBlacksTime(context: context, onNewGame: () {});
       
       // Initialize socket and join the game room
-      ApiService.initializeSocket(token);
+      if (ApiService.socket == null || !ApiService.socket!.connected) {
+        ApiService.initializeSocket(token);
+      }
       ApiService.joinGameRoom(_gameId);
       
       // Initialize socket listeners for the joiner
@@ -903,8 +907,9 @@ void gameOverDialog({
     print('Cancel game - token: ${token != null ? 'present' : 'null'}');
     print('Cancel game - gameId: $_gameId');
     print('Cancel game - isPlaying: $_isPlaying');
+    print('Cancel game - isManuallyCancelling: $_isManuallyCancelling'); // Add log for new flag
     
-    if (token != null && _gameId.isNotEmpty && !_isPlaying) {
+    if (token != null && _gameId.isNotEmpty && !_isPlaying && _isManuallyCancelling) {
       try {
         print('Attempting to cancel game with ID: $_gameId');
         await ApiService.cancelGame(token: token, gameId: _gameId);
@@ -978,6 +983,7 @@ void gameOverDialog({
     _rematchOffered = false;
     _isPlaying = false;
     print('PvP fields reset - gameId: $_gameId, joinCode: $_joinCode');
+    ApiService.disposeSocket(); // Dispose socket when PvP fields are reset
   }
   
   // Removed polling method to check if opponent joined
@@ -1101,10 +1107,24 @@ void gameOverDialog({
     ApiService.onOpponentJoined(context, (data) {
       print('Opponent joined - data: $data');
       _gameId = data['gameId'];
-      _opponentId = data['opponentId'];
-      _opponentName = data['opponentName'];
-      _opponentImage = data['opponentImage'];
-      _opponentRating = data['opponentRating'];
+      
+      // Determine if the current user is the creator or the joiner
+      final currentUserIsCreator = data['creatorId'] == context.read<AuthProvider>().userId;
+
+      if (currentUserIsCreator) {
+        // If current user is creator, opponent is the joiner
+        _opponentId = data['opponentId'];
+        _opponentName = data['opponentName'];
+        _opponentImage = data['opponentImage'];
+        _opponentRating = data['opponentRating'];
+      } else {
+        // If current user is joiner, opponent is the creator
+        _opponentId = data['creatorId'];
+        _opponentName = data['creatorName'];
+        _opponentImage = data['creatorImage'];
+        _opponentRating = data['creatorRating'];
+      }
+
       _whitesTime = Duration(seconds: data['whiteTime']);
       _blacksTime = Duration(seconds: data['blackTime']);
       _isPlaying = true;
@@ -1142,11 +1162,17 @@ void gameOverDialog({
     ApiService.onMoveReceived(context, (data) {
       print('Received move from opponent: $data');
       final fen = data['fen'];
-      final isWhiteMove = data['isWhite'];
+      final isWhiteTurn = data['isWhiteTurn']; // Server should send whose turn it is
+      final whiteTime = data['whiteTime']; // Server should send current times
+      final blackTime = data['blackTime'];
       
       // Load the new FEN position into the game
       _game.loadFen(fen);
       
+      // Update timers based on server data
+      setWhitesTime(Duration(seconds: whiteTime));
+      setBlacksTime(Duration(seconds: blackTime));
+
       // Generate legal moves for the current player
       final legalMoves = _game
           .generateLegalMoves()
@@ -1155,11 +1181,11 @@ void gameOverDialog({
       
       // Determine if it's our turn after the opponent's move
       PlayState newPlayState;
-      if ((isWhiteMove && _isHumanWhite) || (!isWhiteMove && !_isHumanWhite)) {
-        // Opponent just moved, so it's our turn now
+      if ((isWhiteTurn && _isHumanWhite) || (!isWhiteTurn && !_isHumanWhite)) {
+        // It's our turn now
         newPlayState = PlayState.ourTurn;
       } else {
-        // We just moved, so it's their turn now (this case shouldn't be reached here if it's opponent's move)
+        // It's their turn now
         newPlayState = PlayState.theirTurn;
       }
 
@@ -1174,13 +1200,13 @@ void gameOverDialog({
         ),
       );
       
-      // Switch timers
-      if (isWhiteMove) {
-        pauseWhitesTimer(); // White just moved, pause white's timer
-        startBlacksTime(context: context, onNewGame: () {}); // Start black's timer
+      // Start/pause timers based on server's indication of whose turn it is
+      if (isWhiteTurn) {
+        pauseBlacksTimer();
+        startWhitesTime(context: context, onNewGame: () {});
       } else {
-        pauseBlacksTimer(); // Black just moved, pause black's timer
-        startWhitesTime(context: context, onNewGame: () {}); // Start white's timer
+        pauseWhitesTimer();
+        startBlacksTime(context: context, onNewGame: () {});
       }
       
       notifyListeners();
@@ -1323,13 +1349,7 @@ void gameOverDialog({
           'isWhite': _player == Squares.white, // Emit the color of the player who just moved
           'fen': _game.fen,
         });
-        if (isWhite) {
-          pauseWhitesTimer();
-          startBlacksTime(context: context, onNewGame: () {});
-        } else {
-          pauseBlacksTimer();
-          startWhitesTime(context: context, onNewGame: () {});
-        }
+        // The server will now handle timer switching and broadcasting the new state
         gameOverListener(context: context, onNewGame: () {});
       } else {
         showSnackBar(context: context, content: 'Invalid move');
@@ -1359,5 +1379,15 @@ void gameOverDialog({
     _waitingTimer?.cancel();
     _stockfish?.dispose();
     super.dispose();
+  }
+
+  void setIsNavigatingToGame(bool value) {
+    // _isNavigatingToGame = value; // This line is removed
+    // notifyListeners(); // This line is removed
+  }
+
+  void setIsManuallyCancelling(bool value) {
+    _isManuallyCancelling = value;
+    notifyListeners();
   }
 }
