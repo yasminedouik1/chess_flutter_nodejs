@@ -108,6 +108,6 @@ class BuildCustomTime extends StatelessWidget {
     );
   }
 }
-showSnackBar({required BuildContext context,required String content }){
+void showSnackBar({required BuildContext context,required String content }){
 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(content),));
 }

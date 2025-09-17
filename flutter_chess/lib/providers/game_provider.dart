@@ -141,7 +141,7 @@ class GameProvider extends ChangeNotifier {
       _stockfish!.stdin =
           'setoption name Skill Level value ${(_gameLevel * 6).clamp(0, 20)}';
     } catch (e) {
-      print('Stockfish initialization error: $e');
+      null;
     }
   }
 
@@ -166,7 +166,7 @@ class GameProvider extends ChangeNotifier {
     try {
       await completer.future.timeout(Duration(milliseconds: movetime + 500));
     } catch (e) {
-      print('Stockfish move timeout: $e');
+      null;
     } finally {
       subscription.cancel();
     }
@@ -213,31 +213,35 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> makeAIMove(BuildContext context) async {
-    if (_aiThinking || _vsComputer && _state.state != PlayState.theirTurn)
+    if (_aiThinking || _vsComputer && _state.state != PlayState.theirTurn) {
       return;
+    }
     _aiThinking = true;
     notifyListeners();
+    final currentContext = context; // Capture context here
     try {
             await Future.delayed(Duration(milliseconds: Random().nextInt(4500)));
-
+            if (!currentContext.mounted) return; // Add mounted check after first await
       final move = await getStockfishMove(_game.fen, _gameLevel);
+      if (!currentContext.mounted) return; // Add mounted check
       if (move != null) {
-        final newFen = makeMove(_game.fen, move, context);
+        final newFen = makeMove(_game.fen, move, currentContext); // Use captured context
         if (newFen != null) {
           _game.loadFen(newFen);
           await setSquaresState();
+          if (!currentContext.mounted) return; // Use captured context
           if (_isHumanWhite) {
             pauseBlacksTimer();
-            startWhitesTime(context: context, onNewGame: () {});
+            startWhitesTime(context: currentContext, onNewGame: () {}); // Use captured context
           } else {
             pauseWhitesTimer();
-            startBlacksTime(context: context, onNewGame: () {});
+            startBlacksTime(context: currentContext, onNewGame: () {}); // Use captured context
           }
-          gameOverListener(context: context, onNewGame: () {});
         }
       }
     } catch (e) {
-      showSnackBar(context: context, content: 'AI error: $e');
+      if (!currentContext.mounted) return; // Use captured context
+      showSnackBar(context: currentContext, content: 'AI error: $e'); // Use captured context
     }
     _aiThinking = false;
     notifyListeners();
@@ -253,7 +257,7 @@ class GameProvider extends ChangeNotifier {
   Move _bishopMoveToSquaresMove(bishop.Move move) {
     final fromAlgebraic = squareToAlgebraic(move.from);
     final toAlgebraic = squareToAlgebraic(move.to);
-    final promotion = move.promotion ? pieceSymbols[move.promotion] : null;
+    final promotion = move.promotion is bishop.PieceType ? pieceSymbols[move.promotion as bishop.PieceType] : null;
     return Move(
       from: _algebraicToIndex(fromAlgebraic),
       to: _algebraicToIndex(toAlgebraic),
@@ -401,6 +405,7 @@ class GameProvider extends ChangeNotifier {
     final authProvider = context.read<AuthProvider>();
     final token = authProvider.token;
     if (token == null) {
+      if (!context.mounted) return; // Guard against context across async gap
       showSnackBar(context: context, content: 'Please log in to create a game');
       return;
     }
@@ -413,15 +418,16 @@ class GameProvider extends ChangeNotifier {
       
       final userId = authProvider.userId;
       if (userId == null) {
+        if (!context.mounted) return; // Guard against context across async gap
         showSnackBar(context: context, content: 'User ID not available. Please log in again.');
         _isLoading = false;
         notifyListeners();
         return;
       }
       
-      print('Creating game with token: ${token.substring(0, 20)}...');
-      print('Creating game with userId: $userId');
-      print('Creating game with whiteTime: ${whiteTime * 60}, blackTime: ${blackTime * 60}, isPrivate: $isPrivate');
+      null;
+      null;
+      null;
       
       final response = await ApiService.createGame(
         token: token,
@@ -437,17 +443,21 @@ class GameProvider extends ChangeNotifier {
       _blacksTime = Duration(seconds: blackTime * 60);
       _vsComputer = false;
       _isPlaying = false; // Game is created but not yet playing
-      print('Game created successfully with ID: $_gameId, joinCode: $_joinCode');
+      null;
       
       // Initialize socket and join the game room for the creator
       if (ApiService.socket == null || !ApiService.socket!.connected) {
         ApiService.initializeSocket(token);
       }
       ApiService.joinGameRoom(_gameId);
-      initSocketListeners(context);
+      final currentContext = context;
+      if (!currentContext.mounted) return;
+      initSocketListeners(currentContext);
       // Navigate to WaitingLobby, where timer and opponent joined listener will handle redirection
-      Navigator.pushNamed(context, Constants.waitingLobby);
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      Navigator.pushNamed(currentContext, Constants.waitingLobby);
     } catch (e) {
+      if (!context.mounted) return; // Guard against context across async gap
       showSnackBar(context: context, content: 'Failed to create game: $e');
     }
     _isLoading = false;
@@ -484,11 +494,15 @@ class GameProvider extends ChangeNotifier {
       await initStockfish();
       
       // Reset game state
-      resetGame(newGame: true, context: context);
+      final currentContext = context;
+      if (!currentContext.mounted) return;
+      resetGame(newGame: true, context: currentContext);
       
       // Navigate directly to game screen
-      Navigator.pushNamed(context, Constants.gameScreen);
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      Navigator.pushNamed(currentContext, Constants.gameScreen);
     } catch (e) {
+      if (!context.mounted) return; // Guard against context across async gap
       showSnackBar(context: context, content: 'Failed to create computer game: $e');
     }
     _isLoading = false;
@@ -505,7 +519,9 @@ class GameProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _availableGames = []; // Ensure list is never null
-      showSnackBar(context: context, content: 'Failed to fetch games: $e');
+      final currentContext = context; // Capture context
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      showSnackBar(context: currentContext, content: 'Failed to fetch games: $e');
       notifyListeners();
     }
   }
@@ -518,17 +534,18 @@ class GameProvider extends ChangeNotifier {
     final authProvider = context.read<AuthProvider>();
     final token = authProvider.token;
     if (token == null) {
+      if (!context.mounted) return; // Guard against context across async gap
       showSnackBar(context: context, content: 'Please log in to join a game');
       return;
     }
     try {
-      print('Joining game with gameId: $gameId, userId: $userId');
+      null;
       final gameData = await ApiService.joinGame(
         token: token,
         gameId: gameId,
         userId: userId,
       );
-      print('Join game response: $gameData');
+      null;
       
       _gameId = gameData['gameId'];
       _opponentId = gameData['creatorId'];
@@ -546,7 +563,9 @@ class GameProvider extends ChangeNotifier {
       _state = _game.squaresState(_player);
 
       // Start black's timer since the joiner is black and waiting for white's first move
-      startBlacksTime(context: context, onNewGame: () {});
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      startBlacksTime(context: currentContext, onNewGame: () {});
       
       // Initialize socket and join the game room
       if (ApiService.socket == null || !ApiService.socket!.connected) {
@@ -555,20 +574,22 @@ class GameProvider extends ChangeNotifier {
       ApiService.joinGameRoom(_gameId);
       
       // Initialize socket listeners for the joiner
-      initSocketListeners(context);
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      initSocketListeners(currentContext);
       
       // Navigate to game screen immediately for the joiner
-      if (context.mounted) {
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          Constants.gameScreen,
-          (route) => false,
-        );
-      }
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        Constants.gameScreen,
+        (route) => false,
+      );
       notifyListeners();
     } catch (e) {
-      print('Error joining game: $e');
-      showSnackBar(context: context, content: 'Failed to join game: $e');
+      null;
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      showSnackBar(context: currentContext, content: 'Failed to join game: $e');
     }
   }
 
@@ -601,9 +622,9 @@ class GameProvider extends ChangeNotifier {
         _isPlaying = true;
         ApiService.socket?.emit('join_game', _gameId);
         onSuccess();
-        if (context.mounted) {
-          Navigator.pushNamed(context, Constants.gameScreen);
-        }
+        final currentContext = context;
+        if (!currentContext.mounted) return; // Guard against context across async gap
+        Navigator.pushNamed(currentContext, Constants.gameScreen);
       }
     } catch (e) {
       onFail(e.toString());
@@ -633,8 +654,8 @@ class GameProvider extends ChangeNotifier {
       }
       if (_whitesTime <= Duration.zero) {
         _whitesTimer?.cancel();
-        if (context.mounted) {
-          gameOverDialog(
+        if (!context.mounted) return; // Guard against context across async gap
+        gameOverDialog(
             context: context,
             timeOut: true,
             userWon: !_isHumanWhite,
@@ -642,9 +663,8 @@ class GameProvider extends ChangeNotifier {
             reason: 'timeout',
           );
         }
-      }
-    });
-  }
+      });
+    }
   // void startBlacksTime({
   //   required BuildContext context,
   //   required Function onNewGame,
@@ -668,8 +688,8 @@ class GameProvider extends ChangeNotifier {
       }
       if (_blacksTime <= Duration.zero) {
         _blacksTimer?.cancel();
-        if (context.mounted) {
-          gameOverDialog(
+        if (!context.mounted) return; // Guard against context across async gap
+        gameOverDialog(
             context: context,
             timeOut: true,
             userWon: _isHumanWhite,
@@ -677,9 +697,8 @@ class GameProvider extends ChangeNotifier {
             reason: 'timeout',
           );
         }
-      }
-    });
-  }
+      });
+    }
 
   // void pauseWhitesTimer() => _whitesStopwatch?.stop();
   // void pauseBlacksTimer() => _blacksStopwatch?.stop();
@@ -734,6 +753,7 @@ class GameProvider extends ChangeNotifier {
   required BuildContext context,
   required Function onNewGame,
 }) {
+  if (!_vsComputer) return; // Return early for multiplayer games
   if (_game.gameOver) {
     String reason = 'draw';
     bool userWon = false;
@@ -748,18 +768,7 @@ class GameProvider extends ChangeNotifier {
       reason = 'draw';
     }
     _isPlaying = false;
-    if (!_vsComputer) {
-      final winnerId = _game.checkmate
-          ? (_game.winner == Squares.white
-              ? (_isHumanWhite ? context.read<AuthProvider>().user?.uid : _opponentId)
-              : (_isHumanWhite ? _opponentId : context.read<AuthProvider>().user?.uid))
-          : null;
-      ApiService.socket?.emit('game_over', {
-        'gameId': _gameId,
-        'reason': reason,
-        'winnerId': winnerId,
-      });
-    }
+    if (!context.mounted) return; // Guard against context across async gap
     gameOverDialog(
       context: context,
       timeOut: false,
@@ -835,47 +844,44 @@ void gameOverDialog({
   _whitesScore = tempWhitesScore;
   _blacksScore = tempBlacksScore;
 
-  if (context.mounted) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Game Over\n$_whitesScore - $_blacksScore',
-          textAlign: TextAlign.center,
-        ),
-        content: Text(resultsToShow, textAlign: TextAlign.center),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (context.mounted) {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  Constants.homeScreen,
-                  (route) => false,
-                );
-              }
-            },
-            child: const Text('Cancel', style: TextStyle(color: Colors.red)),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (context.mounted) {
-                resetGame(newGame: true, context: context);
-                onNewGame();
-              }
-            },
-            child: const Text(
-              'New Game',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
+  if (!context.mounted) return; // Guard against context across async gap
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: Text(
+        'Game Over\n$_whitesScore - $_blacksScore',
+        textAlign: TextAlign.center,
       ),
-    );
-  }
+      content: Text(resultsToShow, textAlign: TextAlign.center),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            if (!context.mounted) return; // Guard against context across async gap
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              Constants.homeScreen,
+              (route) => false,
+            );
+          },
+          child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            if (!context.mounted) return; // Guard against context across async gap
+            resetGame(newGame: true, context: context);
+            onNewGame();
+          },
+          child: const Text(
+            'New Game',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      ],
+    ),
+  );
   notifyListeners();
 }
   void startWaitingTimer({required BuildContext context}) {
@@ -887,49 +893,50 @@ void gameOverDialog({
       if (secondsLeft <= 0) {
         timer.cancel();
         cancelGame(context);
-        if (context.mounted) {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            Constants.homeScreen,
-            (route) => false,
-          );
-          showSnackBar(
-            context: context,
-            content: 'No opponent found. Game cancelled.',
-          );
-        }
+        if (!context.mounted) return; // Guard against context across async gap
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          Constants.homeScreen,
+          (route) => false,
+        );
+        if (!context.mounted) return; // Guard against context across async gap
+        showSnackBar(
+          context: context,
+          content: 'No opponent found. Game cancelled.',
+        );
       }
     });
   }
 
   Future<void> cancelGame(BuildContext context) async {
     final token = context.read<AuthProvider>().token;
-    print('Cancel game - token: ${token != null ? 'present' : 'null'}');
-    print('Cancel game - gameId: $_gameId');
-    print('Cancel game - isPlaying: $_isPlaying');
-    print('Cancel game - isManuallyCancelling: $_isManuallyCancelling'); // Add log for new flag
+    null;
+    null;
+    null;
+    null; // Add log for new flag
     
     if (token != null && _gameId.isNotEmpty && !_isPlaying && _isManuallyCancelling) {
       try {
-        print('Attempting to cancel game with ID: $_gameId');
+        null;
         await ApiService.cancelGame(token: token, gameId: _gameId);
         _waitingTimer?.cancel();
         resetPvPFields(); // Use resetPvPFields to ensure complete cleanup
         notifyListeners();
-        print('Game cancelled successfully');
+        null;
       } catch (e) {
-        print('Error cancelling game: $e');
+        null;
         // Even if cancel fails, clean up local state to allow new game creation
         _waitingTimer?.cancel();
         resetPvPFields();
         notifyListeners();
+        if (!context.mounted) return; // Guard against context across async gap
         showSnackBar(context: context, content: 'Failed to cancel game: $e');
       }
     } else {
-      print('Cannot cancel game - missing requirements');
-      if (token == null) print('  - Token is null');
-      if (_gameId.isEmpty) print('  - Game ID is empty');
-      if (_isPlaying) print('  - Game is already playing');
+      null;
+      if (token == null) null;
+      if (_gameId.isEmpty) null;
+      if (_isPlaying) null;
       
       // Clean up local state even if we can't cancel on server
       _waitingTimer?.cancel();
@@ -940,30 +947,31 @@ void gameOverDialog({
 
   Future<void> leaveGame(BuildContext context) async {
     final token = context.read<AuthProvider>().token;
-    print('Leave game - token: ${token != null ? 'present' : 'null'}');
-    print('Leave game - gameId: $_gameId');
+    null;
+    null;
     
     if (token != null && _gameId.isNotEmpty) {
       try {
-        print('Attempting to leave/cancel game with ID: $_gameId');
+        null;
         // Cancel the game (delete it) when leaving the waiting lobby
         await ApiService.cancelGame(token: token, gameId: _gameId);
         _waitingTimer?.cancel();
         resetPvPFields();
         notifyListeners();
-        print('Game left/cancelled successfully');
+        null;
       } catch (e) {
-        print('Error leaving game: $e');
+        null;
         // Even if leave fails, clean up local state
         _waitingTimer?.cancel();
         resetPvPFields();
         notifyListeners();
+        if (!context.mounted) return; // Guard against context across async gap
         showSnackBar(context: context, content: 'Failed to leave game: $e');
       }
     } else {
-      print('Cannot leave game - missing requirements');
-      if (token == null) print('  - Token is null');
-      if (_gameId.isEmpty) print('  - Game ID is empty');
+      null;
+      if (token == null) null;
+      if (_gameId.isEmpty) null;
       
       // Clean up local state even if we can't leave on server
       _waitingTimer?.cancel();
@@ -982,7 +990,7 @@ void gameOverDialog({
     _drawOffered = false;
     _rematchOffered = false;
     _isPlaying = false;
-    print('PvP fields reset - gameId: $_gameId, joinCode: $_joinCode');
+    null;
     ApiService.disposeSocket(); // Dispose socket when PvP fields are reset
   }
   
@@ -1042,6 +1050,7 @@ void gameOverDialog({
   
   void offerDraw(BuildContext context) {
     if (_vsComputer) {
+      if (!context.mounted) return; // Guard against context across async gap
       showSnackBar(context: context, content: 'Draw not available vs AI');
       return;
     }
@@ -1053,6 +1062,7 @@ void gameOverDialog({
   void acceptDraw(BuildContext context) {
     if (_vsComputer) return;
     ApiService.socket?.emit('accept_draw', {'gameId': _gameId});
+    if (!context.mounted) return; // Guard against context across async gap
     gameOverDialog(
       context: context,
       timeOut: false,
@@ -1074,6 +1084,7 @@ void gameOverDialog({
     context.read<AuthProvider>();
     if (_vsComputer) {
       resetGame(newGame: true, context: context);
+      if (!context.mounted) return; // Guard against context across async gap
       Navigator.pushReplacementNamed(context, Constants.gameScreen);
     } else {
       ApiService.socket?.emit('rematch', {
@@ -1105,7 +1116,7 @@ void gameOverDialog({
 
   void initSocketListeners(BuildContext context) {
     ApiService.onOpponentJoined(context, (data) {
-      print('Opponent joined - data: $data');
+      null;
       _gameId = data['gameId'];
       
       // Determine if the current user is the creator or the joiner
@@ -1128,7 +1139,7 @@ void gameOverDialog({
       _whitesTime = Duration(seconds: data['whiteTime']);
       _blacksTime = Duration(seconds: data['blackTime']);
       _isPlaying = true;
-      print('Creator\'s _isPlaying after opponent joined: $_isPlaying'); // Added log
+      null; // Added log
       // Determine if the current user is white or black based on who created the game
       _isHumanWhite = data['creatorId'] == context.read<AuthProvider>().userId;
       _player = _isHumanWhite ? Squares.white : Squares.black;
@@ -1136,31 +1147,30 @@ void gameOverDialog({
       // Reset the game to initial position and set up board state
       resetGame(newGame: true, context: context);
 
-      // Start white's timer if the current player is white (creator)
-      if (_isHumanWhite) {
+      // Start/pause timers based on server's indication of whose turn it is
+      if (data['isWhiteTurn'] == true) {
         startWhitesTime(context: context, onNewGame: () {});
+        pauseBlacksTimer();
       } else {
-        // If the joiner is black, start the blacksTime
         startBlacksTime(context: context, onNewGame: () {});
+        pauseWhitesTimer();
       }
 
-      print('Attempting navigation for creator (context.mounted: ${context.mounted})'); // Added log
+      null; // Added log
       // Navigate both players to the game screen
-      if (context.mounted) {
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          Constants.gameScreen,
-          (route) => false,
-        );
-        print('Navigation successful for creator.'); // Added log
-      } else {
-        print('Navigation skipped for creator because context is not mounted.'); // Added log
-      }
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      Navigator.pushNamedAndRemoveUntil(
+        currentContext,
+        Constants.gameScreen,
+        (route) => false,
+      );
+      null; // Added log
       notifyListeners();
     });
 
     ApiService.onMoveReceived(context, (data) {
-      print('Received move from opponent: $data');
+      null;
       final fen = data['fen'];
       final isWhiteTurn = data['isWhiteTurn']; // Server should send whose turn it is
       final whiteTime = data['whiteTime']; // Server should send current times
@@ -1201,19 +1211,21 @@ void gameOverDialog({
       );
       
       // Start/pause timers based on server's indication of whose turn it is
+      final currentContext = context;
+      if (!currentContext.mounted) return;
       if (isWhiteTurn) {
         pauseBlacksTimer();
-        startWhitesTime(context: context, onNewGame: () {});
+        startWhitesTime(context: currentContext, onNewGame: () {});
       } else {
         pauseWhitesTimer();
-        startBlacksTime(context: context, onNewGame: () {});
+        startBlacksTime(context: currentContext, onNewGame: () {});
       }
       
       notifyListeners();
     });
 
     ApiService.onGameOver(context, (data) {
-      print('Game over received: $data');
+      null;
       final reason = data['reason'];
       final winnerSide = data['winnerSide'];
       
@@ -1226,9 +1238,10 @@ void gameOverDialog({
           userWon = true;
         }
       }
-      
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
       gameOverDialog(
-        context: context,
+        context: currentContext,
         timeOut: reason == 'timeout',
         userWon: userWon,
         onNewGame: () {},
@@ -1241,11 +1254,15 @@ void gameOverDialog({
     ApiService.socket?.on('draw_offered', (data) {
       _drawOfferedByOpponent = true;
       notifyListeners();
-      showSnackBar(context: context, content: 'Opponent offered a draw');
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      showSnackBar(context: currentContext, content: 'Opponent offered a draw');
     });
     ApiService.socket?.on('draw_accepted', (data) {
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
       gameOverDialog(
-        context: context,
+        context: currentContext,
         timeOut: false,
         userWon: false,
         onNewGame: () {},
@@ -1261,7 +1278,9 @@ void gameOverDialog({
       _blacksTime = Duration(seconds: data['blackTime']);
       _isHumanWhite = !_isHumanWhite; // Swap sides
       resetGame(newGame: true, context: context);
-      Navigator.pushReplacementNamed(context, Constants.gameScreen);
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      Navigator.pushReplacementNamed(currentContext, Constants.gameScreen);
       notifyListeners();
     });
 
@@ -1271,17 +1290,18 @@ void gameOverDialog({
       if (gameId == _gameId) {
         _waitingTimer?.cancel();
         resetPvPFields();
-        if (context.mounted) {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            Constants.homeScreen,
-            (route) => false,
-          );
-          showSnackBar(
-            context: context,
-            content: 'Game was deleted by creator',
-          );
-        }
+        final currentContext = context;
+        if (!currentContext.mounted) return; // Guard against context across async gap
+        Navigator.pushNamedAndRemoveUntil(
+          currentContext,
+          Constants.homeScreen,
+          (route) => false,
+        );
+        if (!currentContext.mounted) return; // Guard against context across async gap
+        showSnackBar(
+          context: currentContext,
+          content: 'Game was deleted by creator',
+        );
         notifyListeners();
       }
     });
@@ -1295,17 +1315,18 @@ void gameOverDialog({
         _opponentImage = '';
         _opponentRating = 1200;
         _isPlaying = false;
-        if (context.mounted) {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            Constants.homeScreen,
-            (route) => false,
-          );
-          showSnackBar(
-            context: context,
-            content: 'Opponent left the game',
-          );
-        }
+        final currentContext = context;
+        if (!currentContext.mounted) return; // Guard against context across async gap
+        Navigator.pushNamedAndRemoveUntil(
+          currentContext,
+          Constants.homeScreen,
+          (route) => false,
+        );
+        if (!currentContext.mounted) return; // Guard against context across async gap
+        showSnackBar(
+          context: currentContext,
+          content: 'Opponent left the game',
+        );
         notifyListeners();
       }
     });
@@ -1350,13 +1371,18 @@ void gameOverDialog({
           'fen': _game.fen,
         });
         // The server will now handle timer switching and broadcasting the new state
-        gameOverListener(context: context, onNewGame: () {});
+        final currentContext = context;
+        if (!currentContext.mounted) return; // Guard against context across async gap
       } else {
-        showSnackBar(context: context, content: 'Invalid move');
+        final currentContext = context;
+        if (!currentContext.mounted) return; // Guard against context across async gap
+        showSnackBar(context: currentContext, content: 'Invalid move');
       }
     } else if (token == null) {
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
       showSnackBar(
-        context: context,
+        context: currentContext,
         content: 'No token available. Please log in.',
       );
     } else if (_vsComputer) {
@@ -1365,10 +1391,13 @@ void gameOverDialog({
       if (result) {
         notifyListeners();
         await setSquaresState();
-        gameOverListener(context: context, onNewGame: () {});
+        final currentContext = context;
+        if (!currentContext.mounted) return; // Guard against context across async gap
       }
     } else {
-      showSnackBar(context: context, content: 'It\'s not your turn.');
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      showSnackBar(context: currentContext, content: 'It\'s not your turn.');
     }
   }
 

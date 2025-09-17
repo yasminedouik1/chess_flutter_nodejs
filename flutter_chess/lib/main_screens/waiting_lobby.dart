@@ -1,12 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+// import 'package:flutter/widgets.dart'; // Removed as it did not resolve the issue
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../constants.dart';
+// import 'package:flutter/services.dart'; // Potentially needed for PopInvokedResult if not in material.dart
 
 class WaitingLobby extends StatefulWidget {
-  const WaitingLobby({Key? key}) : super(key: key);
+  const WaitingLobby({super.key}); // Use super.key
 
   @override
   State<WaitingLobby> createState() => _WaitingLobbyState();
@@ -37,7 +37,11 @@ class _WaitingLobbyState extends State<WaitingLobby> {
 
   void _navigateToGameScreen() {
     if (context.mounted) {
-      Navigator.pushReplacementNamed(context, Constants.gameScreen);
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        Constants.gameScreen,
+        (route) => false,
+      );
     }
   }
 
@@ -69,14 +73,19 @@ class _WaitingLobbyState extends State<WaitingLobby> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
-        if (!didPop) {
-          // User is trying to go back, cancel the game
-          gameProvider.setIsManuallyCancelling(true); // Set flag to true
-          await gameProvider.cancelGame(context);
-          if (context.mounted) {
-            Navigator.pop(context);
-          }
+      onPopInvokedWithResult: (bool didPop, bool? result) {
+        // Handle the async operations in a non-blocking way if didPop is true
+        if (didPop) {
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            final currentContext = context; // Capture context
+            if (!currentContext.mounted) return;
+            final gameProvider = currentContext.read<GameProvider>();
+            gameProvider.setIsManuallyCancelling(true);
+            await gameProvider.cancelGame(currentContext);
+            if (currentContext.mounted) {
+              Navigator.pushNamedAndRemoveUntil(currentContext, Constants.homeScreen, (route) => false);
+            }
+          });
         }
       },
       child: Scaffold(

@@ -131,6 +131,7 @@ class _SignupScreenState extends State<SignupScreen> {
   Future<void> _handleSignup() async {
     setState(() => isLoading = true);
 
+    if (!mounted) return; // Guard against context across async gap
     final auth = Provider.of<AuthProvider>(context, listen: false);
 
     try {
@@ -143,14 +144,17 @@ class _SignupScreenState extends State<SignupScreen> {
       setState(() => isLoading = false);
 
       if (auth.isLoggedIn) {
+        if (!mounted) return; // Guard against context across async gap
         Navigator.pushReplacementNamed(context, Constants.homeScreen);
       } else {
+        if (!mounted) return; // Guard against context across async gap
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Signup failed")),
         );
       }
     } catch (e) {
       setState(() => isLoading = false);
+      if (!mounted) return; // Guard against context across async gap
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
       );

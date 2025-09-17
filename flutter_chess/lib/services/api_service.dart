@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as socket_io;
-import 'package:flutter_chess/utils.dart';
 
 class ApiService {
   static const String baseUrl =
@@ -84,8 +83,8 @@ class ApiService {
       }),
     );
 
-    print('Signup API status: ${response.statusCode}');
-    print('Signup API body: ${response.body}');
+    /*print('Signup API status: ${response.statusCode}')*/ null;
+    /*print('Signup API body: ${response.body}')*/ null;
 
     final data = _safeDecode(response.body);
 
@@ -129,8 +128,8 @@ class ApiService {
       body: jsonEncode({'email': email, 'password': password}),
     );
 
-    print('Login API status: ${response.statusCode}');
-    print('Login API body: ${response.body}');
+    /*print('Login API status: ${response.statusCode}')*/ null;
+    /*print('Login API body: ${response.body}')*/ null;
 
     final data = _safeDecode(response.body);
 
@@ -141,9 +140,9 @@ class ApiService {
           _extractUsername(data) ??
           email; // Fallback to email if username is null
 
-      print('Extracted token: $token');
-      print('Extracted userId: $userId');
-      print('Extracted username: $savedUsername');
+      /*print('Extracted token: $token')*/ null;
+      /*print('Extracted userId: $userId')*/ null;
+      /*print('Extracted username: $savedUsername')*/ null;
 
       if (token != null && userId != null) {
         await saveUser(userId, token, savedUsername);
@@ -174,135 +173,139 @@ class ApiService {
 
   // PvP Game Methods
 
- static Future<Map<String, dynamic>> createGame({
+  static Future<Map<String, dynamic>> createGame({
     required String token,
     required String userId,
     required int whiteTime,
     required int blackTime,
     required bool isPrivate,
+    String? joinCode,
   }) async {
-    print('API createGame called with userId: $userId');
-    print('API createGame called with token: ${token.substring(0, 20)}...');
-    print('API createGame called with isPrivate: $isPrivate');
-    
-    // Only generate join code for private games
-    String? joinCode;
-    if (isPrivate) {
-      joinCode = generateGameCode();
-      print('Generated join code for private game: $joinCode');
-    }
-    
-    final requestBody = {
-      'whiteTime': whiteTime,
-      'blackTime': blackTime,
-      'isPrivate': isPrivate,
-    };
-    
-    // Only include joinCode in request if it's a private game
-    if (isPrivate && joinCode != null) {
-      requestBody['joinCode'] = joinCode;
-    }
-    
-    final response = await http.post(
-      Uri.parse('$baseUrl/games'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(requestBody),
-    );
-    
-    print('API createGame response status: ${response.statusCode}');
-    print('API createGame response body: ${response.body}');
-    
-    final data = _safeDecode(response.body);
-    if (response.statusCode == 200) {
-      // For private games, ensure the response includes the join code
-      if (isPrivate && joinCode != null) {
-        data['joinCode'] = joinCode;
+    // /*print('createGame API call - token: ${token.substring(0, 10)}..., userId: $userId')*/ null;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/games'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': userId,
+          'whiteTime': whiteTime,
+          'blackTime': blackTime,
+          'isPrivate': isPrivate,
+          'joinCode': joinCode,
+        }),
+      );
+      // /*print('createGame API response status: ${response.statusCode}')*/ null;
+      // /*print('createGame API response body: ${response.body}')*/ null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to create game');
       }
-      return data;
+    } catch (e) {
+      // /*print('Error in createGame: $e')*/ null;
+      rethrow;
     }
-    throw Exception(data['message'] ?? 'Failed to create game');
   }
 
- static Future<List<Map<String, dynamic>>> getAvailableGames(String token) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/games'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    final data = _safeDecode(response.body);
-    if (response.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(data);
+  static Future<List<Map<String, dynamic>>> getAvailableGames(String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/games/available'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> gamesJson = jsonDecode(response.body);
+        return gamesJson.map((json) => json as Map<String, dynamic>).toList();
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to fetch available games');
+      }
+    } catch (e) {
+      // /*print('Error fetching available games: $e')*/ null;
+      rethrow;
     }
-    throw Exception(data['message'] ?? 'Failed to fetch games');
   }
 
-  // api_service.dart
   static Future<Map<String, dynamic>> joinGame({
     required String token,
     required String gameId,
     required String userId,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/games/join/$gameId'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({'userId': userId}),
-    );
-    final data = _safeDecode(response.body);
-    if (response.statusCode == 200) {
-      return data;
+    // /*print('joinGame API call - gameId: $gameId, userId: $userId')*/ null;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/games/join/$gameId'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': userId,
+        }),
+      );
+      // /*print('joinGame API response status: ${response.statusCode}')*/ null;
+      // /*print('joinGame API response body: ${response.body}')*/ null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to join game');
+      }
+    } catch (e) {
+      // /*print('Error in joinGame: $e')*/ null;
+      rethrow;
     }
-    throw Exception(data['message'] ?? 'Failed to join game');
   }
 
-  // Join a game by code
   static Future<Map<String, dynamic>> joinGameByCode({
-    required String joinCode,
     required String token,
+    required String joinCode,
   }) async {
-    final userId = await getUserId();
-    if (userId == null) {
-      throw Exception('User not logged in');
-    }
-    final response = await http.post(
-      Uri.parse('$baseUrl/games/join-by-code'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({'joinCode': joinCode, 'userId': userId}),
-    );
-    final data = _safeDecode(response.body);
-    if (response.statusCode == 200) {
-      initializeSocket(token);
-      joinGameRoom(data['gameId']);
-      return data;
-    } else {
-      throw Exception(data['message'] ?? 'Failed to join game');
+    // /*print('joinGameByCode API call - joinCode: $joinCode')*/ null;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/games/join-by-code'),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({
+          'joinCode': joinCode,
+        }),
+      );
+      // /*print('joinGameByCode API response status: ${response.statusCode}')*/ null;
+      // /*print('joinGameByCode API response body: ${response.body}')*/ null;
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to join game by code');
+      }
+    } catch (e) {
+      // /*print('Error in joinGameByCode: $e')*/ null;
+      rethrow;
     }
   }
 
-  static Future<void> cancelGame({
+  static Future<Map<String, dynamic>> cancelGame({
     required String token,
     required String gameId,
   }) async {
-    print('API cancelGame called with gameId: $gameId');
-    print('API cancelGame called with token: ${token.substring(0, 20)}...');
-    
-    final response = await http.post(
-      Uri.parse('$baseUrl/games/cancel/$gameId'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    
-    print('API cancelGame response status: ${response.statusCode}');
-    print('API cancelGame response body: ${response.body}');
-    
-    if (response.statusCode != 200) {
-      throw Exception('Failed to cancel game - Status: ${response.statusCode}, Body: ${response.body}');
+    // /*print('cancelGame API call - gameId: $gameId')*/ null;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/games/cancel/$gameId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      // /*print('cancelGame API response status: ${response.statusCode}')*/ null;
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to cancel game');
+      }
+    } catch (e) {
+      // /*print('Error in cancelGame: $e')*/ null;
+      rethrow;
     }
   }
 
@@ -351,85 +354,114 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> getGameStatus({required String token, required String gameId}) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/games/$gameId/status'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    final data = _safeDecode(response.body);
-    if (response.statusCode == 200) {
-      return data;
-    } else {
-      throw Exception(data['message'] ?? 'Failed to get game status');
+  static Future<Map<String, dynamic>> getGameStatus({
+    required String token,
+    required String gameId,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/games/$gameId/status'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to get game status');
+      }
+    } catch (e) {
+      // /*print('Error getting game status: $e')*/ null;
+      rethrow;
     }
   }
 
   static void disposeSocket() {
     socket?.disconnect();
+    // /*print('Socket disconnected and set to null')*/ null;
     socket = null;
   }
 
-  // api_service.dart
-  static void initializeSocket(String token) {
-    socket = socket_io.io('http://10.0.2.2:5000', {
-      'transports': ['websocket'],
-      'autoConnect': false,
-      'extraHeaders': {'Authorization': 'Bearer $token'},
-    });
+  static void initializeSocket(String? token) {
+    if (token == null) {
+      // /*print('No token provided for socket initialization')*/ null;
+      return;
+    }
+
+    final String serverUrl = 'http://10.0.2.2:5000';
+    socket = socket_io.io(
+      serverUrl,
+      {
+        'transports': ['websocket'],
+        'autoConnect': false,
+        'extraHeaders': {
+          'Authorization': 'Bearer $token',
+        },
+      },
+    );
+
     socket!.connect();
-    socket!.onConnect((_) => print('Socket connected'));
-    socket!.onConnectError((data) => print('Socket connection error: $data'));
-    socket!.onError((data) => print('Socket error: $data'));
-    socket!.onDisconnect((reason) => print('Socket disconnected: $reason'));
+    socket!.onConnect((_) => /*print('Socket connected')*/ null);
+    socket!.onConnectError((data) => /*print('Socket connection error: $data')*/ null);
+    socket!.onError((data) => /*print('Socket error: $data')*/ null);
+    socket!.onDisconnect((reason) => /*print('Socket disconnected: $reason')*/ null);
   }
 
   static void joinGameRoom(String gameId) {
+    // /*print('Attempting to join game room: $gameId')*/ null;
     socket?.emit('join_game', {'gameId': gameId});
   }
 
-  static void onOpponentJoined(BuildContext context, Function(Map<String, dynamic>) callback) {
-    socket?.on('player_joined', (data) {
-      callback(data);
-    });
+  static void onOpponentJoined(
+    BuildContext context,
+    Function(Map<String, dynamic>) handler,
+  ) {
+    socket?.on('player_joined', (data) => handler(data));
   }
 
-  static void onMoveReceived(BuildContext context, Function(Map<String, dynamic>) callback) {
-    socket?.on('move', (data) {
-      print("Received move: $data");
-      callback(Map<String, dynamic>.from(data));
-    });
+  static void onMoveReceived(
+    BuildContext context,
+    Function(Map<String, dynamic>) handler,
+  ) {
+    socket?.on('move', (data) => handler(data));
   }
-static void onGameOver(BuildContext context, Function(Map<String, dynamic>) callback) {
-    socket?.on('game_over', (data) {
-      callback(Map<String, dynamic>.from(data));
-    });
+
+  static void onGameOver(
+    BuildContext context,
+    Function(Map<String, dynamic>) handler,
+  ) {
+    socket?.on('game_over', (data) => handler(data));
   }
-static void onMove(Function(Map<String, dynamic>) callback) {
-  socket?.on('move', (data) {
-    print("Received move: $data");
-    callback(Map<String, dynamic>.from(data));
-  });
-}
 
-static void onGameDeleted(Function(Map<String, dynamic>) callback) {
-  socket?.on('game_deleted', (data) {
-    print("Game deleted: $data");
-    callback(Map<String, dynamic>.from(data));
-  });
-}
+  static void onDrawOffer(
+    BuildContext context,
+    Function(Map<String, dynamic>) handler,
+  ) {
+    socket?.on('draw_offered', (data) => handler(data));
+  }
 
-static void onOpponentLeft(Function(Map<String, dynamic>) callback) {
-  socket?.on('opponent_left', (data) {
-    print("Opponent left: $data");
-    callback(Map<String, dynamic>.from(data));
-  });
-}
+  static void onDrawAccepted(
+    BuildContext context,
+    Function(Map<String, dynamic>) handler,
+  ) {
+    socket?.on('draw_accepted', (data) => handler(data));
+  }
 
-static void onGameRemoved(Function(Map<String, dynamic>) callback) {
-  socket?.on('game_removed', (data) {
-    print("Game removed from lobby: $data");
-    callback(Map<String, dynamic>.from(data));
-  });
-}
+  static void onRematch(
+    BuildContext context,
+    Function(Map<String, dynamic>) handler,
+  ) {
+    socket?.on('rematch', (data) => handler(data));
+  }
 
+  static void onGameDeleted(Function(Map<String, dynamic>) handler) {
+    socket?.on('game_deleted', (data) => handler(data));
+  }
+
+  static void onOpponentLeft(Function(Map<String, dynamic>) handler) {
+    socket?.on('opponent_left', (data) => handler(data));
+  }
+
+  static void onGameRemoved(Function(Map<String, dynamic>) handler) {
+    socket?.on('game_removed', (data) => handler(data));
+  }
 }

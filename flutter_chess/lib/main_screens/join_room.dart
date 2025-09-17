@@ -41,10 +41,13 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
     super.dispose();
   }
 
-  void joinRoom(BuildContext context, String id) async {
+  void joinRoom(String id) async {
     try {
       final token = await ApiService.getToken();
       if (token == null) {
+        if (!mounted) {
+          return; // Guard against context across async gap
+        }
         showSnackBar(context: context, content: 'Please log in to join a game');
         return;
       }
@@ -54,32 +57,35 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
         token: token,
       );
       
-      if (context.mounted) {
-        final gameProvider = context.read<GameProvider>();
-        gameProvider.gameId = data['gameId'];
-        gameProvider.setOpponentData(
-          opponentId: data['creatorId'],
-          opponentName: data['creatorName'],
-          opponentImage: data['creatorImage'],
-          opponentRating: data['creatorRating'],
-          whiteTime: data['whiteTime'],
-          blackTime: data['blackTime'],
-          increment: data['increment'] ?? 0,
-          gameId: data['gameId'],
-        );
-        gameProvider.isHumanWhite = false; // Joiner is black
-        gameProvider.setPlayerColor(player: 1); // Black player
-        gameProvider.setIsPlaying(true);
-        
-        // Initialize socket listeners for the joiner
-        gameProvider.initSocketListeners(context);
-        
-        Navigator.pushNamed(context, Constants.gameScreen);
+      if (!mounted) {
+        return; // Guard against context across async gap
       }
+      final gameProvider = context.read<GameProvider>();
+      gameProvider.gameId = data['gameId'];
+      gameProvider.setOpponentData(
+        opponentId: data['creatorId'],
+        opponentName: data['creatorName'],
+        opponentImage: data['creatorImage'],
+        opponentRating: data['creatorRating'],
+        whiteTime: data['whiteTime'],
+        blackTime: data['blackTime'],
+        increment: data['increment'] ?? 0,
+        gameId: data['gameId'],
+      );
+      gameProvider.isHumanWhite = false; // Joiner is black
+      gameProvider.setPlayerColor(player: 1); // Black player
+      gameProvider.setIsPlaying(true);
+      
+      // Initialize socket listeners for the joiner
+      gameProvider.initSocketListeners(context);
+      
+      if (!mounted) return;
+      Navigator.pushNamed(context, Constants.gameScreen);
     } catch (e) {
-      if (context.mounted) {
-        showSnackBar(context: context, content: 'Error: $e');
+      if (!mounted) {
+        return; // Guard against context across async gap
       }
+      showSnackBar(context: context, content: 'Error: $e');
     }
   }
 
@@ -145,7 +151,7 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                     ),
                     const SizedBox(height: 16),
                     ElevatedButton(
-                      onPressed: () => joinRoom(context, _idController.text),
+                      onPressed: () => joinRoom(_idController.text),
                       child: const Text('Join'),
                     ),
                   ],
@@ -217,13 +223,14 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                           userId,
                         );
                       } else {
+                        if (!mounted) return;
                         showSnackBar(context: context, content: 'Please log in to join a game');
                       }
                     },
                     child: const Text('Join'),
                   ),
                 ),
-              )).toList(),
+              )),
           ],
         ),
       ),

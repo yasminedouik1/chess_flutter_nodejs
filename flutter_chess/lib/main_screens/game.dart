@@ -4,7 +4,6 @@ import 'package:flutter_chess/main_screens/waiting_lobby.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:flutter_chess/services/assets_manager.dart';
-import 'package:flutter_chess/services/api_service.dart';
 import 'package:provider/provider.dart';
 import 'package:squares/squares.dart';
 
@@ -31,6 +30,7 @@ class GameScreen extends HookWidget {
       final result = gameProvider.makeSquaresMove(move);
       if (result) {
         await gameProvider.setSquaresState().whenComplete(() {
+          if (!context.mounted) return; // Guard against context across async gap
           if (gameProvider.player == Squares.white) {
             gameProvider.pauseWhitesTimer();
             startTimer(context, isWhiteTimer: false, onNewGame: () {});
@@ -41,6 +41,7 @@ class GameScreen extends HookWidget {
         });
 
         if (gameProvider.state.state == PlayState.theirTurn && !gameProvider.aiThinking) {
+          if (!context.mounted) return; // Guard against context across async gap
           await gameProvider.makeAIMove(context);
         }
       }
@@ -57,7 +58,8 @@ class GameScreen extends HookWidget {
       gameProvider.gameOverListener(
         context: context,
         onNewGame: () {
-          if (!gameProvider.vsComputer) {
+          if (!context.mounted) return; // Guard against context across async gap
+          if (gameProvider.vsComputer) {
             gameProvider.rematch(context);
           } else {
             gameProvider.resetGame(newGame: true, context: context);
@@ -75,7 +77,10 @@ class GameScreen extends HookWidget {
       }
       
       await Future.delayed(const Duration(milliseconds: 500));
-      checkGameOverListener(context);
+      if (!context.mounted) return; // Guard against context across async gap
+      if (gameProvider.vsComputer) {
+        checkGameOverListener(context);
+      }
     }
 
     // Show exit confirmation dialog
@@ -186,16 +191,18 @@ class GameScreen extends HookWidget {
     // Initialize game on first build
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return; // Guard against context across async gap
         if (gameProvider.vsComputer) {
           gameProvider.resetGame(newGame: false, context: context);
                     gameProvider.initStockfish().then((_) {
-
+            if (!context.mounted) return; // Guard against context across async gap
              startTimer(
               context,
               isWhiteTimer: gameProvider.player == Squares.white,
               onNewGame: () {},
             );
             if (gameProvider.player == Squares.black) {
+              if (!context.mounted) return; // Guard against context across async gap
               gameProvider.makeAIMove(context);
             }
           });
@@ -225,9 +232,11 @@ class GameScreen extends HookWidget {
     // Show dialogs when needed
     useEffect(() {
       if (gameProvider.drawOfferedByOpponent) {
+        if (!context.mounted) return; // Guard against context across async gap
         showDrawOfferDialog(context);
       }
       if (gameProvider.rematchOffered) {
+        if (!context.mounted) return; // Guard against context across async gap
         showRematchOfferDialog(context);
       }
       return null;

@@ -45,7 +45,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final userId = auth.user?.uid;
     final token = auth.token;
     if (userId == null || token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please log in to update profile')));
+      final currentContext = context; // Capture context
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      ScaffoldMessenger.of(currentContext).showSnackBar(const SnackBar(content: Text('Please log in to update profile')));
       return;
     }
 
@@ -64,9 +66,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _image = null;
         _passwordController.clear();
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated successfully')));
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      ScaffoldMessenger.of(currentContext).showSnackBar(const SnackBar(content: Text('Profile updated successfully')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating profile: $e')));
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      ScaffoldMessenger.of(currentContext).showSnackBar(SnackBar(content: Text('Error updating profile: $e')));
     }
   }
 
@@ -210,8 +216,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   onPressed: () async {
                     await auth.logout();
+                    final currentContext = context; // Capture context
+                    if (!currentContext.mounted) return; // Guard against context across async gap
                     Navigator.pushReplacementNamed(
-                      context,
+                      currentContext,
                       Constants.loginScreen,
                     );
                   },

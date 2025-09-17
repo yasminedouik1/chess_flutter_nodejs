@@ -111,9 +111,22 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Update game with the new FEN
+      // Calculate elapsed time and deduct from current player's time
+      const now = new Date();
+      const elapsedTime = Math.floor((now.getTime() - game.lastMoveTime.getTime()) / 1000); // in seconds
+      
+      if (game.isWhitesTurn) {
+        game.whiteTime -= elapsedTime;
+        if (game.whiteTime < 0) game.whiteTime = 0;
+      } else {
+        game.blackTime -= elapsedTime;
+        if (game.blackTime < 0) game.blackTime = 0;
+      }
+
+      // Update game with the new FEN and turn
       game.fen = fen;
       game.isWhitesTurn = !isWhite;
+      game.lastMoveTime = now; // Update last move time
       await game.save();
 
       console.log(`Server: Emitting move with whiteTime: ${game.whiteTime}, blackTime: ${game.blackTime}`); // Add log
@@ -130,25 +143,50 @@ io.on('connection', (socket) => {
       console.log(`Move broadcasted in game ${gameId}: ${move} by ${isWhite ? 'white' : 'black'}`);
 
       // Check game over conditions
+      console.log(`Server: Checking game over for FEN: ${fen}`); // Log FEN
       const chess = new Chess(fen);
       if (chess.isGameOver()) {
-        let result, winnerSide;
+        console.log('Server: Game is over.'); // Log game over
+        console.log(`  - Is checkmate: ${chess.isCheckmate()}`);
+        console.log(`  - Is draw: ${chess.isDraw()}`);
+        console.log(`  - Is stalemate: ${chess.isStalemate()}`);
+        console.log(`  - Is threefold repetition: ${chess.isThreefoldRepetition()}`);
+        console.log(`  - Is insufficient material: ${chess.isInsufficientMaterial()}`);
+        console.log(`  - Is fifty moves: ${chess.isFiftyMoves()}`);
+
+        let result = 'draw'; // Default to draw
+        let winnerSide = null;
+        let reason = '';
+
         if (chess.isCheckmate()) {
-          winnerSide = isWhite ? 'black' : 'white'; // Last move won
+          winnerSide = isWhite ? 'black' : 'white'; // The player who just moved is 'isWhite', so the other player wins.
           result = `${winnerSide}_wins`;
+          reason = 'checkmate';
+        } else if (chess.isStalemate()) {
+          reason = 'stalemate';
+        } else if (chess.isThreefoldRepetition()) {
+          reason = 'threefold_repetition';
+        } else if (chess.isInsufficientMaterial()) {
+          reason = 'insufficient_material';
+        } else if (chess.isFiftyMoves()) {
+          reason = 'fifty_moves';
         } else if (chess.isDraw()) {
-          result = 'draw';
-        } else {
-          result = 'draw'; // Treat stalemate as draw
+          // Generic draw if none of the specific draw conditions are met (shouldn't happen with comprehensive checks)
+          reason = 'draw';
         }
-        game.result = result;
+
+        game.result = result; // Update game result in DB
         await game.save();
+
+        if (winnerSide) {
+          await updateRatings(game, result, winnerSide);
+        }
 
         io.to(gameId).emit('game_over', { 
           gameId: gameId,
           result, 
           winnerSide,
-          reason: chess.isCheckmate() ? 'checkmate' : 'draw' 
+          reason
         });
         return;
       }

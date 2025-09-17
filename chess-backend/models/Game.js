@@ -19,6 +19,7 @@ const gameSchema = new mongoose.Schema({
   increment: { type: Number, default: 0 },
   isPrivate: { type: Boolean, default: false },
   joinCode: { type: String, sparse: true, unique: true }, // For private games
+  lastMoveTime: { type: Date, default: Date.now }, // New field to track the time of the last move
 });
 
 module.exports = mongoose.model('Game', gameSchema);

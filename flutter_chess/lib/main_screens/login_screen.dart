@@ -22,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> login() async {
     setState(() => isLoading = true);
 
+    final currentContext = context;
     final result = await ApiService.login(
       email: emailController.text,
       password: passwordController.text,
@@ -31,14 +32,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (result['token'] != null) {
       // Login successful
+      if (!currentContext.mounted) return; // Guard against context across async gap
       Navigator.pushReplacement(
-        context,
+        currentContext,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
     } else {
       // Show error
+      if (!currentContext.mounted) return; // Guard against context across async gap
       ScaffoldMessenger.of(
-        context,
+        currentContext,
       ).showSnackBar(SnackBar(content: Text(result['message'] ?? 'Error')));
     }
   }
@@ -120,11 +123,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         );
 
                         if (auth.isLoggedIn) {
+                          if (!context.mounted) return; // Guard against context across async gap
                           Navigator.pushReplacementNamed(
                             context,
                             Constants.homeScreen,
                           );
                         } else {
+                          if (!context.mounted) return; // Guard against context across async gap
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text("Invalid credentials"),

@@ -67,6 +67,7 @@ router.post('/', auth, async (req, res) => {
     }
     
     const game = new Game(gameData);
+    game.lastMoveTime = new Date(); // Initialize lastMoveTime when game is created
     await game.save();
     req.io.emit('new_game_available');
     res.json({ gameId: game.gameId, joinCode: finalJoinCode });
@@ -161,6 +162,8 @@ router.post('/join/:gameId', authenticate, async (req, res) => {
     game.opponentImage = user.image || '';
     game.opponentRating = user.playerRating || 1200;
     await game.save();
+    game.lastMoveTime = new Date(); // Set lastMoveTime when opponent joins
+    await game.save();
     console.log(`Game ${gameId} - isPlaying after opponent joined: ${game.isPlaying}`); // Add log
     req.io.to(gameId).emit('player_joined', {
       gameId,
@@ -175,6 +178,7 @@ router.post('/join/:gameId', authenticate, async (req, res) => {
       whiteTime: game.whiteTime,
       blackTime: game.blackTime,
       increment: game.increment,
+      isWhiteTurn: true, // White always starts first
     });
     res.json({
       gameId,
@@ -189,6 +193,7 @@ router.post('/join/:gameId', authenticate, async (req, res) => {
       whiteTime: game.whiteTime,
       blackTime: game.blackTime,
       increment: game.increment,
+      isWhiteTurn: true, // White always starts first
     });
   } catch (err) {
     res.status(500).json({ message: 'Server error: ' + err.message });
@@ -236,6 +241,8 @@ router.post('/join-by-code', auth, async (req, res) => {
     game.opponentImage = user.image || '';
     game.opponentRating = user.playerRating || 1200;
     await game.save();
+    game.lastMoveTime = new Date(); // Set lastMoveTime when opponent joins (private game)
+    await game.save();
     console.log(`Game ${game.gameId} - isPlaying after opponent joined (by code): ${game.isPlaying}`); // Add log
     req.io.to(game.gameId).emit('player_joined', {
       gameId: game.gameId,
@@ -250,6 +257,7 @@ router.post('/join-by-code', auth, async (req, res) => {
       whiteTime: game.whiteTime,
       blackTime: game.blackTime,
       increment: game.increment,
+      isWhiteTurn: true, // White always starts first
     });
     res.json({
       gameId: game.gameId,
@@ -264,6 +272,7 @@ router.post('/join-by-code', auth, async (req, res) => {
       whiteTime: game.whiteTime,
       blackTime: game.blackTime,
       increment: game.increment,
+      isWhiteTurn: true, // White always starts first
     });
   } catch (err) {
     console.error('Error joining game by code:', err);
