@@ -84,12 +84,3 @@ void showSnackBar({
     ),
   );
 }
-
-final List<String> gameTimes = [
-  'Bullet 15+0',
-  'Bullet 20+0',
-  'Bullet 30+0',
-  
-  'Classical 60+0',
-  'Custom 60+0',
-];

@@ -16,18 +16,19 @@ class GameSetupScreen extends HookWidget {
     final isPrivate = useState(false);
     final isCustomTime = useState(false);
     final selectedTime = useState('10 min');
+    final customTimeController = useTextEditingController(text: '10');
 
     // Provider access
     final gameProvider = context.watch<GameProvider>();
 
     // Game time options
     final gameTimes = [
-      'Bullet 1+0',
-      'Bullet 2+0',
-      'Bullet 3+0',
-      'Bullet 5+0',
-      'Classical 10+0',
-      'Classical 30+0',
+      'Bullet 1 min',
+      'Bullet 2 min',
+      'Bullet 3 min',
+      'Bullet 5 min',
+      'Classical 10 min',
+      'Classical 30 min',
       Constants.custom, // Use from app_routes
     ];
 
@@ -37,14 +38,26 @@ class GameSetupScreen extends HookWidget {
       selectedTime.value = gameTime.isNotEmpty ? gameTime : '10 min';
       
       if (!isCustomTime.value) {
-        final time = int.parse(gameTime.split('+')[0]);
+        final time = int.parse(gameTime.split(' ')[0]);
         whiteTimeInMinutes.value = time;
         blackTimeInMinutes.value = time;
+        customTimeController.text = time.toString();
       }
     }
 
     // Handle game creation
     Future<void> handleGameCreation() async {
+      if (selectedTime.value.isEmpty || 
+          (isCustomTime.value && whiteTimeInMinutes.value <= 0)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select a game time or enter a custom time.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       if (gameProvider.vsComputer) {
         // Create computer game
         await gameProvider.createComputerGame(
@@ -96,10 +109,13 @@ class GameSetupScreen extends HookWidget {
                     width: 150,
                     height: 90,
                     decoration: BoxDecoration(
-                      color: selectedTime.value == time || 
-                             (isCustomTime.value && label == Constants.custom)
-                          ? const Color(0xFF26A69A)
-                          : const Color(0xFF3A3A6A),
+                      color: isCustomTime.value && label == Constants.custom
+                          ? const Color.fromARGB(255, 7, 152, 137) // A distinct color for custom selected
+                          : selectedTime.value == time
+                              ? const Color(0xFF26A69A) // Existing selected color
+                              : label == Constants.custom
+                                  ?  const Color.fromARGB(255, 66, 143, 135) // Distinct color for unselected custom
+                                  : const Color(0xFF3A3A6A), // Default color
                       borderRadius: BorderRadius.circular(15),
                       boxShadow: [
                         BoxShadow(
@@ -136,7 +152,7 @@ class GameSetupScreen extends HookWidget {
 
             // Custom time controls
             if (isCustomTime.value) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 30), // Increased spacing
               Card(
                 color: const Color(0xFF3A3A6A),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -145,7 +161,7 @@ class GameSetupScreen extends HookWidget {
                   child: Column(
                     children: [
                       const Text(
-                        'White Time',
+                        'Game Time',
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
                       ),
                       Row(
@@ -156,42 +172,48 @@ class GameSetupScreen extends HookWidget {
                             onPressed: () {
                               if (whiteTimeInMinutes.value > 1) {
                                 whiteTimeInMinutes.value--;
+                                blackTimeInMinutes.value = whiteTimeInMinutes.value;
+                                customTimeController.text = whiteTimeInMinutes.value.toString();
                               }
                             },
                           ),
-                          Text(
-                            '${whiteTimeInMinutes.value} min', 
-                            style: const TextStyle(color: Colors.white, fontSize: 16)
+                          SizedBox(
+                            width: 80, // Adjust width as needed
+                            child: TextField(
+                              controller: customTimeController,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                              decoration: InputDecoration(
+                                suffixText: ' min',
+                                suffixStyle: const TextStyle(color: Colors.white, fontSize: 16),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide.none,
+                                ),
+                                filled: true,
+                                fillColor: Colors.transparent,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                              onChanged: (value) {
+                                final newTime = int.tryParse(value);
+                                if (newTime != null && newTime > 0) {
+                                  whiteTimeInMinutes.value = newTime;
+                                  blackTimeInMinutes.value = newTime;
+                                } else if (value.isEmpty) {
+                                  whiteTimeInMinutes.value = 0;
+                                  blackTimeInMinutes.value = 0;
+                                }
+                              },
+                            ),
                           ),
                           IconButton(
                             icon: const Icon(Icons.add, color: Colors.white),
-                            onPressed: () => whiteTimeInMinutes.value++,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Black Time',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.remove, color: Colors.white),
-                            onPressed: () {
-                              if (blackTimeInMinutes.value > 1) {
-                                blackTimeInMinutes.value--;
-                              }
+                            onPressed: () => {
+                              whiteTimeInMinutes.value++,
+                              blackTimeInMinutes.value = whiteTimeInMinutes.value,
+                              customTimeController.text = whiteTimeInMinutes.value.toString(),
                             },
-                          ),
-                          Text(
-                            '${blackTimeInMinutes.value} min', 
-                            style: const TextStyle(color: Colors.white, fontSize: 16)
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add, color: Colors.white),
-                            onPressed: () => blackTimeInMinutes.value++,
                           ),
                         ],
                       ),
@@ -203,7 +225,7 @@ class GameSetupScreen extends HookWidget {
 
             // Private game toggle (only for multiplayer)
             if (!gameProvider.vsComputer) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 20), // Adjusted spacing
               SwitchListTile(
                 title: const Text('Private Game', style: TextStyle(color: Colors.white)),
                 value: isPrivate.value,
@@ -212,10 +234,10 @@ class GameSetupScreen extends HookWidget {
               ),
             ],
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 30), // Increased spacing
 // Inside GameSetupScreen's Column, before the Create/Start Game button
 if (gameProvider.vsComputer) ...[
-  const SizedBox(height: 20),
+  const SizedBox(height: 30), // Increased spacing
   Card(
     color: const Color(0xFF3A3A6A),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -227,20 +249,45 @@ if (gameProvider.vsComputer) ...[
             'AI Difficulty',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
           ),
-          DropdownButton<int>(
-            value: gameProvider.gameLevel,
-            onChanged: (value) {
-              if (value != null) {
-                gameProvider.setGameDifficulty(level: value);
-              }
-            },
-            items: [
-              DropdownMenuItem(value: 1, child: const Text('Easy', style: TextStyle(color: Colors.white))),
-              DropdownMenuItem(value: 2, child: const Text('Medium', style: TextStyle(color: Colors.white))),
-              DropdownMenuItem(value: 3, child: const Text('Hard', style: TextStyle(color: Colors.white))),
+          Column(
+            children: [
+              RadioListTile<int>(
+                title: const Text('Easy', style: TextStyle(color: Colors.white, fontSize: 16)),
+                value: 1,
+                groupValue: gameProvider.gameLevel,
+                onChanged: (value) {
+                  if (value != null) {
+                    gameProvider.setGameDifficulty(level: value);
+                  }
+                },
+                activeColor: const Color(0xFF26A69A),
+                contentPadding: EdgeInsets.zero,
+              ),
+              RadioListTile<int>(
+                title: const Text('Medium', style: TextStyle(color: Colors.white, fontSize: 16)),
+                value: 2,
+                groupValue: gameProvider.gameLevel,
+                onChanged: (value) {
+                  if (value != null) {
+                    gameProvider.setGameDifficulty(level: value);
+                  }
+                },
+                activeColor: const Color(0xFF26A69A),
+                contentPadding: EdgeInsets.zero,
+              ),
+              RadioListTile<int>(
+                title: const Text('Hard', style: TextStyle(color: Colors.white, fontSize: 16)),
+                value: 3,
+                groupValue: gameProvider.gameLevel,
+                onChanged: (value) {
+                  if (value != null) {
+                    gameProvider.setGameDifficulty(level: value);
+                  }
+                },
+                activeColor: const Color(0xFF26A69A),
+                contentPadding: EdgeInsets.zero,
+              ),
             ],
-            dropdownColor: const Color(0xFF3A3A6A),
-            style: const TextStyle(color: Colors.white),
           ),
         ],
       ),
@@ -248,11 +295,25 @@ if (gameProvider.vsComputer) ...[
   ),
 ],
             // Create/Start Game button
-            ElevatedButton(
-              onPressed: gameProvider.isLoading ? null : handleGameCreation,
-              child: gameProvider.isLoading
-                  ? const CircularProgressIndicator()
-                  : Text(gameProvider.vsComputer ? 'Start Game' : 'Create Game'),
+            SizedBox(
+              width: double.infinity, // Make button full width
+              height: 50, // Set a fixed height
+              child: ElevatedButton(
+                onPressed: gameProvider.isLoading ? null : handleGameCreation,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF26A69A), // Greenish color
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12), // Rounded corners
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12), // Vertical padding
+                ),
+                child: gameProvider.isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : Text(
+                        gameProvider.vsComputer ? 'Start Game' : 'Create Game',
+                        style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+              ),
             ),
           ],
         ),
