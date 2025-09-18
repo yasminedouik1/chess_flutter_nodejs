@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-// import 'package:flutter/widgets.dart'; // Removed as it did not resolve the issue
+
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
-import '../constants.dart';
-// import 'package:flutter/services.dart'; // Potentially needed for PopInvokedResult if not in material.dart
+import '../app_routes.dart'; // Changed from constants.dart
 
 class WaitingLobby extends StatefulWidget {
   const WaitingLobby({super.key}); // Use super.key
@@ -13,7 +12,6 @@ class WaitingLobby extends StatefulWidget {
 }
 
 class _WaitingLobbyState extends State<WaitingLobby> {
-  // Timer? _pollingTimer; // Removed polling timer
 
   @override
   void initState() {
@@ -21,43 +19,25 @@ class _WaitingLobbyState extends State<WaitingLobby> {
     // Initialize socket listeners in GameProvider
     context.read<GameProvider>().initSocketListeners(context);
     context.read<GameProvider>().startWaitingTimer(context: context);
-    // _startPolling(); // Removed polling call
 
     // Add listener for game status changes
-    context.read<GameProvider>().addListener(_gameStatusListener);
+    // context.read<GameProvider>().addListener(_gameStatusListener); // Removed redundant listener
   }
 
-  void _gameStatusListener() {
-    final gameProvider = context.read<GameProvider>();
-    if (gameProvider.isPlaying) {
-      // If a player has joined, navigate to the game screen
-      _navigateToGameScreen();
-    }
-  }
-
-  void _navigateToGameScreen() {
-    if (context.mounted) {
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        Constants.gameScreen,
-        (route) => false,
-      );
-    }
-  }
-
-  // Removed _startPolling method
-  // void _startPolling() {
-  //   _pollingTimer?.cancel(); // Cancel any existing timer
-  //   _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-  //     // Periodically check for opponent joined status
-  //     await context.read<GameProvider>().checkOpponentJoined(context);
-  //   });
+  // Removed _navigateToGameScreen as it's no longer referenced
+  // void _navigateToGameScreen() {
+  //   if (context.mounted) {
+  //     Navigator.pushNamedAndRemoveUntil(
+  //       context,
+  //       Constants.gameScreen,
+  //       (route) => false,
+  //     );
+  //   }
   // }
 
   @override
   void dispose() {
-    // _pollingTimer?.cancel(); // Cancel polling timer when leaving the lobby
-    context.read<GameProvider>().removeListener(_gameStatusListener); // Remove the listener
+    // context.read<GameProvider>().removeListener(_gameStatusListener); // Removed redundant listener
     // Cancel the game when the widget is disposed
     final gameProvider = context.read<GameProvider>();
     gameProvider.waitingTimer?.cancel(); // Cancel the waiting timer
@@ -80,6 +60,7 @@ class _WaitingLobbyState extends State<WaitingLobby> {
             final currentContext = context; // Capture context
             if (!currentContext.mounted) return;
             final gameProvider = currentContext.read<GameProvider>();
+            // Set flag to true to indicate explicit cancellation by the user.
             gameProvider.setIsManuallyCancelling(true);
             await gameProvider.cancelGame(currentContext);
             if (currentContext.mounted) {
@@ -128,6 +109,7 @@ class _WaitingLobbyState extends State<WaitingLobby> {
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: () async {
+                // Set flag to true to indicate explicit cancellation by the user.
                 gameProvider.setIsManuallyCancelling(true); // Set flag to true
                 await gameProvider.cancelGame(context);
                 if (context.mounted) {

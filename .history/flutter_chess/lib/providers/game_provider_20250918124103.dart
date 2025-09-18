@@ -2,16 +2,17 @@ import 'dart:async';
 import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
-import 'package:flutter_chess/app_routes.dart'; // Changed from constants.dart
+import 'package:flutter_chess/constants.dart';
 import 'package:flutter_chess/models/user_model.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/services/api_service.dart';
+import 'package:flutter_chess/utils.dart';
 import 'package:flutter_chess/widgets/widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:square_bishop/square_bishop.dart';
 import 'package:squares/squares.dart';
 import 'package:stockfish/stockfish.dart';
-import 'package:flutter_chess/constants/app_constants.dart'; // Import new constants file
+// Import chess.dart for FEN parsing
 
 Map<bishop.PieceType, String> pieceSymbols = {
   bishop.PieceType.king(): 'K',
@@ -57,8 +58,10 @@ class GameProvider extends ChangeNotifier {
   bool _isPlaying = false;
   String _userId = '';
   bool _isPrivate = false; // Added for private rooms
-  bool _isManuallyCancelling = false; // Flag to indicate if the user explicitly initiated a game cancellation (e.g., via a 'Cancel' button or back navigation in the waiting lobby).
+  bool _isManuallyCancelling = false; // New flag
 
+  Stopwatch? _whitesStopwatch;
+  Stopwatch? _blacksStopwatch;
   Stockfish? _stockfish;
   // Getters
   String get joinCode => _joinCode;
@@ -115,47 +118,6 @@ class GameProvider extends ChangeNotifier {
     return _game.fen;
   }
 
-  // Helper function to apply a move given a FEN and a move string (e.g., 'e2e4')
-  String? makeMove(String fen, String moveString, BuildContext context) {
-    try {
-      _game.loadFen(fen); // Ensure the game state is current
-
-      final legalMoves = _game.generateLegalMoves();
-      bishop.Move? targetBishopMove;
-
-      for (final legalMove in legalMoves) {
-        // Construct the algebraic string for the legal move, including promotion if applicable
-        String legalMoveAlgebraic = squareToAlgebraic(legalMove.from) +
-            squareToAlgebraic(legalMove.to);
-        if (pieceSymbols.containsKey(legalMove.promotion)) {
-          legalMoveAlgebraic +=
-              pieceSymbols[legalMove.promotion]!.toLowerCase();
-        }
-
-        if (legalMoveAlgebraic == moveString) {
-          targetBishopMove = legalMove;
-          break;
-        }
-      }
-
-      if (targetBishopMove != null) {
-        final success = _game.makeMove(targetBishopMove);
-        if (success) {
-          return _game.fen;
-        }
-      } else {
-        if (context.mounted) {
-          showSnackBar(context: context, content: 'Invalid or illegal move: $moveString');
-        }
-      }
-    } catch (e) {
-      if (context.mounted) {
-        showSnackBar(context: context, content: 'Error making move: $e');
-      }
-    }
-    return null;
-  }
-
   Future<void> initStockfish() async {
     try {
       _stockfish = Stockfish();
@@ -177,19 +139,19 @@ class GameProvider extends ChangeNotifier {
       subscription.cancel();
       // Set skill level based on gameLevel (1: easy, 2: medium, 3: hard)
       _stockfish!.stdin =
-          'setoption name Skill Level value ${(_gameLevel * STOCKFISH_SKILL_LEVEL_MULTIPLIER).clamp(STOCKFISH_SKILL_LEVEL_MIN, STOCKFISH_SKILL_LEVEL_MAX)}';
+          'setoption name Skill Level value ${(_gameLevel * 6).clamp(0, 20)}';
     } catch (e) {
-      debugPrint('Error initializing Stockfish: $e');
+      null;
     }
   }
 
   Future<String?> getStockfishMove(String fen, int level) async {
     if (_stockfish == null) return null;
     final movetime = switch (level) {
-      1 => AI_MOVETIME_EASY,
-      2 => AI_MOVETIME_MEDIUM,
-      3 => AI_MOVETIME_HARD,
-      _ => AI_MOVETIME_DEFAULT,
+      1 => 100, // Easy: 100ms
+      2 => 500, // Medium: 500ms
+      3 => 1000, // Hard: 1000ms
+      _ => 500,
     };
     _stockfish!.stdin = 'position fen $fen';
     _stockfish!.stdin = 'go movetime $movetime';
@@ -202,9 +164,9 @@ class GameProvider extends ChangeNotifier {
       }
     });
     try {
-      await completer.future.timeout(Duration(milliseconds: movetime + AI_MOVETIME_TIMEOUT_BUFFER));
+      await completer.future.timeout(Duration(milliseconds: movetime + 500));
     } catch (e) {
-      debugPrint('Error getting Stockfish move: $e');
+      null;
     } finally {
       subscription.cancel();
     }
@@ -213,7 +175,7 @@ class GameProvider extends ChangeNotifier {
 
   set isHumanWhite(bool value) {
     _isHumanWhite = value;
-    _player = value ? Squares.white : Squares.black;
+    //    _player = value ? Squares.white : Squares.black;
     notifyListeners();
   }
 
@@ -247,6 +209,7 @@ class GameProvider extends ChangeNotifier {
 
   set gameId(String? value) {
     _gameId = value ?? '';
+    notifyListeners();
   }
 
   Future<void> makeAIMove(BuildContext context) async {
@@ -257,7 +220,7 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
     final currentContext = context; // Capture context here
     try {
-            await Future.delayed(Duration(milliseconds: Random().nextInt(AI_RANDOM_DELAY_MAX_MILLISECONDS)));
+            await Future.delayed(Duration(milliseconds: Random().nextInt(4500)));
             if (!currentContext.mounted) return; // Add mounted check after first await
       final move = await getStockfishMove(_game.fen, _gameLevel);
       if (!currentContext.mounted) return; // Add mounted check
@@ -331,8 +294,15 @@ class GameProvider extends ChangeNotifier {
       _opponentName = '';
       _opponentImage = '';
       _opponentRating = 1200;
-      _waitingText = WAITING_LOBBY_TIMEOUT_SECONDS.toString();
+      _waitingText = '90';
     }
+    // if (_vsComputer && newGame && _player == Squares.black) {
+    //   Future.delayed(Duration(milliseconds: Random().nextInt(4050) + 250), () {
+    //     _game.makeRandomMove();
+    //     _state = _game.squaresState(_player);
+    //     notifyListeners();
+    //   });
+    // }
     notifyListeners();
   }
 
@@ -390,6 +360,7 @@ class GameProvider extends ChangeNotifier {
     _savedBlacksTime = Duration(minutes: int.parse(newSavedBlacksTime));
     setWhitesTime(_savedWhitesTime);
     setBlacksTime(_savedBlacksTime);
+    notifyListeners();
   }
 
   void setWhitesTime(Duration time) {
@@ -411,14 +382,13 @@ class GameProvider extends ChangeNotifier {
 
   void setGameDifficulty({required int level}) {
     _gameLevel = level;
-    _gameDifficulty = switch (level) {
-      1 => GameDifficulty.easy,
-      2 => GameDifficulty.medium,
-      3 => GameDifficulty.hard,
-      _ => GameDifficulty.easy, // Default to easy
-    };
+    _gameDifficulty = level == 1
+        ? GameDifficulty.easy
+        : level == 2
+        ? GameDifficulty.medium
+        : GameDifficulty.hard;
        if (_stockfish != null) {
-      _stockfish!.stdin = 'setoption name Skill Level value ${(_gameLevel * STOCKFISH_SKILL_LEVEL_MULTIPLIER).clamp(STOCKFISH_SKILL_LEVEL_MIN, STOCKFISH_SKILL_LEVEL_MAX)}';
+      _stockfish!.stdin = 'setoption name Skill Level value ${(_gameLevel * 6).clamp(0, 20)}';
     }
     notifyListeners();
   }
@@ -455,6 +425,10 @@ class GameProvider extends ChangeNotifier {
         return;
       }
       
+      null;
+      null;
+      null;
+      
       final response = await ApiService.createGame(
         token: token,
         userId: userId,
@@ -465,11 +439,11 @@ class GameProvider extends ChangeNotifier {
       _gameId = response['gameId'];
       _joinCode = response['joinCode'] ?? '';
       _isHumanWhite = playerColor == PlayerColor.white;
-      _player = _isHumanWhite ? Squares.white : Squares.black; // Ensure _player is set
       _whitesTime = Duration(seconds: whiteTime * 60);
       _blacksTime = Duration(seconds: blackTime * 60);
       _vsComputer = false;
       _isPlaying = false; // Game is created but not yet playing
+      null;
       
       // Initialize socket and join the game room for the creator
       if (ApiService.socket == null || !ApiService.socket!.connected) {
@@ -526,7 +500,7 @@ class GameProvider extends ChangeNotifier {
       
       // Navigate directly to game screen
       if (!currentContext.mounted) return; // Guard against context across async gap
-      Navigator.pushNamedAndRemoveUntil(currentContext, Constants.gameScreen, (route) => false,);
+      Navigator.pushNamed(currentContext, Constants.gameScreen);
     } catch (e) {
       if (!context.mounted) return; // Guard against context across async gap
       showSnackBar(context: context, content: 'Failed to create computer game: $e');
@@ -565,19 +539,21 @@ class GameProvider extends ChangeNotifier {
       return;
     }
     try {
+      null;
       final gameData = await ApiService.joinGame(
         token: token,
         gameId: gameId,
         userId: userId,
       );
+      null;
       
       _gameId = gameData['gameId'];
       _opponentId = gameData['creatorId'];
       _opponentName = gameData['creatorName'];
       _opponentImage = gameData['creatorImage'];
-      _opponentRating = (gameData['creatorRating'] as num).toInt();
-      _whitesTime = Duration(seconds: (gameData['whiteTime'] as num).toInt());
-      _blacksTime = Duration(seconds: (gameData['blackTime'] as num).toInt());
+      _opponentRating = gameData['creatorRating'];
+      _whitesTime = Duration(seconds: gameData['whiteTime']);
+      _blacksTime = Duration(seconds: gameData['blackTime']);
       _isHumanWhite = false; // Joiner is black
       _player = Squares.black;
       _isPlaying = true;
@@ -610,6 +586,7 @@ class GameProvider extends ChangeNotifier {
       );
       notifyListeners();
     } catch (e) {
+      null;
       final currentContext = context;
       if (!currentContext.mounted) return; // Guard against context across async gap
       showSnackBar(context: currentContext, content: 'Failed to join game: $e');
@@ -640,14 +617,14 @@ class GameProvider extends ChangeNotifier {
         _opponentId = game['game']['creatorId'];
         _opponentName = game['game']['creatorName'];
         _opponentImage = game['game']['creatorImage'];
-        _opponentRating = (game['game']['creatorRating'] as num).toInt();
+        _opponentRating = game['game']['creatorRating'];
         _userId = user.uid;
         _isPlaying = true;
         ApiService.socket?.emit('join_game', _gameId);
         onSuccess();
         final currentContext = context;
         if (!currentContext.mounted) return; // Guard against context across async gap
-        Navigator.pushNamedAndRemoveUntil(currentContext, Constants.gameScreen, (route) => false,);
+        Navigator.pushNamed(currentContext, Constants.gameScreen);
       }
     } catch (e) {
       onFail(e.toString());
@@ -667,6 +644,8 @@ class GameProvider extends ChangeNotifier {
     required Function onNewGame,
   }) {
     if (_whitesTime <= Duration.zero) return;
+    _whitesStopwatch = Stopwatch()..start();
+    _blacksStopwatch?.stop();
     _whitesTimer?.cancel();
     _whitesTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_whitesTime > Duration.zero) {
@@ -681,7 +660,7 @@ class GameProvider extends ChangeNotifier {
             timeOut: true,
             userWon: !_isHumanWhite,
             onNewGame: onNewGame,
-            reason: GameOverReason.TIMEOUT,
+            reason: 'timeout',
           );
         }
       });
@@ -699,6 +678,8 @@ class GameProvider extends ChangeNotifier {
     required Function onNewGame,
   }) {
     if (_blacksTime <= Duration.zero) return;
+    _blacksStopwatch = Stopwatch()..start();
+    _whitesStopwatch?.stop();
     _blacksTimer?.cancel();
     _blacksTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_blacksTime > Duration.zero) {
@@ -713,7 +694,7 @@ class GameProvider extends ChangeNotifier {
             timeOut: true,
             userWon: _isHumanWhite,
             onNewGame: onNewGame,
-            reason: GameOverReason.TIMEOUT,
+            reason: 'timeout',
           );
         }
       });
@@ -722,32 +703,69 @@ class GameProvider extends ChangeNotifier {
   // void pauseWhitesTimer() => _whitesStopwatch?.stop();
   // void pauseBlacksTimer() => _blacksStopwatch?.stop();
   void pauseWhitesTimer() {
+    _whitesStopwatch?.stop();
     _whitesTimer?.cancel();
     notifyListeners();
   }
 
   void pauseBlacksTimer() {
+    _blacksStopwatch?.stop();
     _blacksTimer?.cancel();
     notifyListeners();
   }
 
-  void gameOverListener({
+  // void _updateTimer(
+  //   BuildContext context,
+  //   Function onNewGame, {
+  //   required bool isWhite,
+  // }) {
+  //   Timer.periodic(const Duration(seconds: 1), (timer) {
+  //     if (isWhite && _whitesStopwatch?.isRunning == true) {
+  //       _whitesTime = Duration(seconds: _whitesTime.inSeconds - 1);
+  //       if (_whitesTime.inSeconds <= 0) {
+  //         timer.cancel();
+  //         gameOverDialog(
+  //           context: context,
+  //           timeOut: true,
+  //           userWon: !_isHumanWhite,
+  //           onNewGame: onNewGame,
+  //           reason: 'timeout',
+  //         );
+  //       }
+  //     } else if (!isWhite && _blacksStopwatch?.isRunning == true) {
+  //       _blacksTime = Duration(seconds: _blacksTime.inSeconds - 1);
+  //       if (_blacksTime.inSeconds <= 0) {
+  //         timer.cancel();
+  //         gameOverDialog(
+  //           context: context,
+  //           timeOut: true,
+  //           userWon: _isHumanWhite,
+  //           onNewGame: onNewGame,
+  //           reason: 'timeout',
+  //         );
+  //       }
+  //     }
+  //     notifyListeners();
+  //   });
+  // }
+
+ void gameOverListener({
   required BuildContext context,
   required Function onNewGame,
 }) {
   if (!_vsComputer) return; // Return early for multiplayer games
   if (_game.gameOver) {
-    String reason = GameOverReason.DRAW;
+    String reason = 'draw';
     bool userWon = false;
     if (_game.checkmate) {
-      reason = GameOverReason.CHECKMATE;
+      reason = 'checkmate';
       userWon = _vsComputer
           ? (_isHumanWhite && _game.winner == Squares.white) ||
             (!_isHumanWhite && _game.winner == Squares.black)
           : (_isHumanWhite && _game.winner == Squares.white) ||
             (!_isHumanWhite && _game.winner == Squares.black);
     } else if (_game.stalemate || _game.insufficientMaterial) {
-      reason = GameOverReason.DRAW;
+      reason = 'draw';
     }
     _isPlaying = false;
     if (!context.mounted) return; // Guard against context across async gap
@@ -787,11 +805,11 @@ void gameOverDialog({
         tempWhitesScore += 1.0;
       }
     }
-  } else if (reason == GameOverReason.DRAW) {
+  } else if (reason == 'draw') {
     resultsToShow = 'Draw';
     tempWhitesScore += 0.5;
     tempBlacksScore += 0.5;
-  } else if (reason == GameOverReason.RESIGN) {
+  } else if (reason == 'resign') {
     resultsToShow = userWon ? 'Opponent resigned' : 'You resigned';
     if (userWon) {
       if (_isHumanWhite) {
@@ -806,7 +824,7 @@ void gameOverDialog({
         tempWhitesScore += 1.0;
       }
     }
-  } else if (reason == GameOverReason.CHECKMATE) {
+  } else if (reason == 'checkmate') {
     resultsToShow = userWon ? 'You won by checkmate' : 'Opponent won by checkmate';
     if (userWon) {
       if (_isHumanWhite) {
@@ -867,7 +885,7 @@ void gameOverDialog({
   notifyListeners();
 }
   void startWaitingTimer({required BuildContext context}) {
-    int secondsLeft = WAITING_LOBBY_TIMEOUT_SECONDS;
+    int secondsLeft = 90;
     _waitingTimer?.cancel();
     _waitingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       secondsLeft--;
@@ -892,16 +910,21 @@ void gameOverDialog({
 
   Future<void> cancelGame(BuildContext context) async {
     final token = context.read<AuthProvider>().token;
+    null;
+    null;
+    null;
+    null; // Add log for new flag
     
-    // _isManuallyCancelling is set to true when the user explicitly cancels from the UI (e.g., pressing 'Cancel' button or back button in WaitingLobby).
-    // This flag ensures that game cancellation on the server only happens if the user intended to cancel, and not for other accidental disposes.
     if (token != null && _gameId.isNotEmpty && !_isPlaying && _isManuallyCancelling) {
       try {
+        null;
         await ApiService.cancelGame(token: token, gameId: _gameId);
         _waitingTimer?.cancel();
         resetPvPFields(); // Use resetPvPFields to ensure complete cleanup
         notifyListeners();
+        null;
       } catch (e) {
+        null;
         // Even if cancel fails, clean up local state to allow new game creation
         _waitingTimer?.cancel();
         resetPvPFields();
@@ -910,6 +933,11 @@ void gameOverDialog({
         showSnackBar(context: context, content: 'Failed to cancel game: $e');
       }
     } else {
+      null;
+      if (token == null) null;
+      if (_gameId.isEmpty) null;
+      if (_isPlaying) null;
+      
       // Clean up local state even if we can't cancel on server
       _waitingTimer?.cancel();
       resetPvPFields();
@@ -919,15 +947,20 @@ void gameOverDialog({
 
   Future<void> leaveGame(BuildContext context) async {
     final token = context.read<AuthProvider>().token;
+    null;
+    null;
     
     if (token != null && _gameId.isNotEmpty) {
       try {
+        null;
         // Cancel the game (delete it) when leaving the waiting lobby
         await ApiService.cancelGame(token: token, gameId: _gameId);
         _waitingTimer?.cancel();
         resetPvPFields();
         notifyListeners();
+        null;
       } catch (e) {
+        null;
         // Even if leave fails, clean up local state
         _waitingTimer?.cancel();
         resetPvPFields();
@@ -936,6 +969,10 @@ void gameOverDialog({
         showSnackBar(context: context, content: 'Failed to leave game: $e');
       }
     } else {
+      null;
+      if (token == null) null;
+      if (_gameId.isEmpty) null;
+      
       // Clean up local state even if we can't leave on server
       _waitingTimer?.cancel();
       resetPvPFields();
@@ -953,6 +990,7 @@ void gameOverDialog({
     _drawOffered = false;
     _rematchOffered = false;
     _isPlaying = false;
+    null;
     ApiService.disposeSocket(); // Dispose socket when PvP fields are reset
   }
   
@@ -1030,7 +1068,7 @@ void gameOverDialog({
       timeOut: false,
       userWon: false,
       onNewGame: () {},
-      reason: GameOverReason.DRAW,
+      reason: 'draw',
     );
     _isPlaying = false;
     notifyListeners();
@@ -1078,6 +1116,7 @@ void gameOverDialog({
 
   void initSocketListeners(BuildContext context) {
     ApiService.onOpponentJoined(context, (data) {
+      null;
       _gameId = data['gameId'];
       
       // Determine if the current user is the creator or the joiner
@@ -1097,9 +1136,10 @@ void gameOverDialog({
         _opponentRating = data['creatorRating'];
       }
 
-      _whitesTime = Duration(seconds: (data['whiteTime'] as num).toInt());
-      _blacksTime = Duration(seconds: (data['blackTime'] as num).toInt());
+      _whitesTime = Duration(seconds: data['whiteTime']);
+      _blacksTime = Duration(seconds: data['blackTime']);
       _isPlaying = true;
+      null; // Added log
       // Determine if the current user is white or black based on who created the game
       _isHumanWhite = data['creatorId'] == context.read<AuthProvider>().userId;
       _player = _isHumanWhite ? Squares.white : Squares.black;
@@ -1116,6 +1156,7 @@ void gameOverDialog({
         pauseWhitesTimer();
       }
 
+      null; // Added log
       // Navigate both players to the game screen
       final currentContext = context;
       if (!currentContext.mounted) return; // Guard against context across async gap
@@ -1124,19 +1165,23 @@ void gameOverDialog({
         Constants.gameScreen,
         (route) => false,
       );
+      null; // Added log
       notifyListeners();
     });
 
     ApiService.onMoveReceived(context, (data) {
+      null;
       final fen = data['fen'];
       final isWhiteTurn = data['isWhiteTurn']; // Server should send whose turn it is
+      final whiteTime = data['whiteTime']; // Server should send current times
+      final blackTime = data['blackTime'];
       
       // Load the new FEN position into the game
       _game.loadFen(fen);
       
       // Update timers based on server data
-      setWhitesTime(Duration(seconds: (data['whiteTime'] as num).toInt()));
-      setBlacksTime(Duration(seconds: (data['blackTime'] as num).toInt()));
+      setWhitesTime(Duration(seconds: whiteTime));
+      setBlacksTime(Duration(seconds: blackTime));
 
       // Generate legal moves for the current player
       final legalMoves = _game
@@ -1180,6 +1225,7 @@ void gameOverDialog({
     });
 
     ApiService.onGameOver(context, (data) {
+      null;
       final reason = data['reason'];
       final winnerSide = data['winnerSide'];
       
@@ -1196,7 +1242,7 @@ void gameOverDialog({
       if (!currentContext.mounted) return; // Guard against context across async gap
       gameOverDialog(
         context: currentContext,
-        timeOut: reason == GameOverReason.TIMEOUT,
+        timeOut: reason == 'timeout',
         userWon: userWon,
         onNewGame: () {},
         reason: reason,
@@ -1220,7 +1266,7 @@ void gameOverDialog({
         timeOut: false,
         userWon: false,
         onNewGame: () {},
-        reason: GameOverReason.DRAW,
+        reason: 'draw',
       );
       _isPlaying = false;
       notifyListeners();
@@ -1305,17 +1351,19 @@ void gameOverDialog({
         token != null &&
         ((_isHumanWhite && _state.state == PlayState.ourTurn) ||
             (!_isHumanWhite && _state.state == PlayState.theirTurn))) {
+      final isWhite = _isHumanWhite; // This should be `_player == Squares.white` to accurately represent whose turn it is
       final result = makeSquaresMove(move);
       if (result) {
-        // After a move, it becomes the opponent's turn from the local player's perspective.
+        // After a move, it becomes the opponent's turn
         _state = SquaresState(
           board: _game.squaresState(_player).board,
           player: _player,
-          state: PlayState.theirTurn,
+          state: isWhite ? PlayState.theirTurn : PlayState.ourTurn,
           size: BoardSize(8, 8),
           moves: _game.generateLegalMoves().map((m) => _bishopMoveToSquaresMove(m)).toList(),
         );
         notifyListeners();
+        // Removed await setSquaresState(); because state is set manually above
         ApiService.socket?.emit('move', {
           'gameId': _gameId,
           'move': move.toString(),
@@ -1362,10 +1410,6 @@ void gameOverDialog({
     super.dispose();
   }
 
-  void setIsNavigatingToGame(bool value) {
-    // _isNavigatingToGame = value; // This line is removed
-    // notifyListeners(); // This line is removed
-  }
 
   void setIsManuallyCancelling(bool value) {
     _isManuallyCancelling = value;

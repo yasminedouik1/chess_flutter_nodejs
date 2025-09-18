@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_chess/constants.dart';
+import 'package:flutter_chess/constants/app_constants.dart';
 
 class PlayerColorRadioButton extends StatelessWidget {
   const PlayerColorRadioButton({

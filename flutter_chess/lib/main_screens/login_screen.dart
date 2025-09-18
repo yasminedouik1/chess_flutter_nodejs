@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_chess/main_screens/home.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
-import 'package:flutter_chess/services/api_service.dart';
 import 'package:provider/provider.dart';
 
-import '../constants.dart';
+import '../app_routes.dart'; // Changed from constants.dart
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,32 +17,33 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscureText = true;
   bool isLoading = false;
 
-  Future<void> login() async {
-    setState(() => isLoading = true);
-
-    final currentContext = context;
-    final result = await ApiService.login(
-      email: emailController.text,
-      password: passwordController.text,
-    );
-
-    setState(() => isLoading = false);
-
-    if (result['token'] != null) {
-      // Login successful
-      if (!currentContext.mounted) return; // Guard against context across async gap
-      Navigator.pushReplacement(
-        currentContext,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
-    } else {
-      // Show error
-      if (!currentContext.mounted) return; // Guard against context across async gap
-      ScaffoldMessenger.of(
-        currentContext,
-      ).showSnackBar(SnackBar(content: Text(result['message'] ?? 'Error')));
-    }
-  }
+  // Removed unused login() method
+  // Future<void> login() async {
+  //   setState(() => isLoading = true);
+  //
+  //   final currentContext = context;
+  //   final result = await ApiService.login(
+  //     email: emailController.text,
+  //     password: passwordController.text,
+  //   );
+  //
+  //   setState(() => isLoading = false);
+  //
+  //   if (result['token'] != null) {
+  //     // Login successful
+  //     if (!currentContext.mounted) return; // Guard against context across async gap
+  //     Navigator.pushReplacement(
+  //       currentContext,
+  //       MaterialPageRoute(builder: (_) => const HomeScreen()),
+  //     );
+  //   } else {
+  //     // Show error
+  //     if (!currentContext.mounted) return; // Guard against context across async gap
+  //     ScaffoldMessenger.of(
+  //       currentContext,
+  //     ).showSnackBar(SnackBar(content: Text(result['message'] ?? 'Error')));
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -113,28 +112,30 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       onPressed: () async {
+                        setState(() => isLoading = true); // Set loading state
                         final auth = Provider.of<AuthProvider>(
                           context,
                           listen: false,
                         );
-                        await auth.login(
-                          email: emailController.text,
-                          password: passwordController.text,
-                        );
-
-                        if (auth.isLoggedIn) {
-                          if (!context.mounted) return; // Guard against context across async gap
-                          Navigator.pushReplacementNamed(
-                            context,
-                            Constants.homeScreen,
+                        try {
+                          await auth.login(
+                            email: emailController.text,
+                            password: passwordController.text,
                           );
-                        } else {
+                          if (auth.isLoggedIn) {
+                            if (!context.mounted) return; // Guard against context across async gap
+                            Navigator.pushReplacementNamed(
+                              context,
+                              Constants.homeScreen,
+                            );
+                          }
+                        } catch (e) {
                           if (!context.mounted) return; // Guard against context across async gap
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("Invalid credentials"),
-                            ),
+                            SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
                           );
+                        } finally {
+                          setState(() => isLoading = false); // Reset loading state
                         }
                       },
 

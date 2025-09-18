@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../constants.dart';
+import '../app_routes.dart'; // Changed from constants.dart
 import '../providers/auth_provider.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -147,16 +147,19 @@ class _SignupScreenState extends State<SignupScreen> {
         if (!mounted) return; // Guard against context across async gap
         Navigator.pushReplacementNamed(context, Constants.homeScreen);
       } else {
+        // This block should ideally not be reached if auth.signup throws on failure.
+        // However, if for some reason isLoggedIn is false without an exception,
+        // we'll display a generic signup failed message.
         if (!mounted) return; // Guard against context across async gap
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Signup failed")),
+          const SnackBar(content: Text("Signup failed. Please try again.")),
         );
       }
     } catch (e) {
       setState(() => isLoading = false);
       if (!mounted) return; // Guard against context across async gap
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
       );
     }
   }

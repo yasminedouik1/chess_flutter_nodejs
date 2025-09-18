@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_chess/constants.dart';
+import 'package:flutter_chess/app_routes.dart'; // Changed from constants.dart
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:squares/squares.dart';
+import 'package:flutter_chess/constants/app_constants.dart'; // Added for GameOverReason
 
 String getTimerToDisplay({
   required GameProvider gameProvider,
@@ -34,13 +35,13 @@ void gameOverDialog({
     barrierDismissible: false,
     builder: (context) => AlertDialog(
       title: Text(
-        timeOut ? 'Time Out' : reason == 'draw' ? 'Draw' : userWon ? 'You Won!' : 'You Lost!',
+        timeOut ? 'Time Out' : reason == GameOverReason.DRAW ? 'Draw' : userWon ? 'You Won!' : 'You Lost!',
         textAlign: TextAlign.center,
       ),
       content: Text(
         timeOut
             ? 'Game ended due to time out.'
-            : reason == 'draw'
+            : reason == GameOverReason.DRAW
                 ? 'The game ended in a draw.'
                 : userWon
                     ? 'Congratulations, you won by $reason!'

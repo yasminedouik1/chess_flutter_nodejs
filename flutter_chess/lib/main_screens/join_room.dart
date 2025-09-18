@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
-import '../constants.dart';
+import '../app_routes.dart'; // Changed from constants.dart
 import '../services/api_service.dart';
 import '../widgets/widgets.dart';
 

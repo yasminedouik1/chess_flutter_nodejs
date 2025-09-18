@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_chess/constants.dart';
+import 'package:flutter_chess/app_routes.dart';
 import 'package:flutter_chess/main_screens/about.dart';
 import 'package:flutter_chess/main_screens/game.dart';
 import 'package:flutter_chess/main_screens/game_setup.dart';

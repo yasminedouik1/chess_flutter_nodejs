@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_chess/constants.dart';
+import 'package:flutter_chess/app_routes.dart'; // Changed from constants.dart
 import 'package:flutter_chess/providers/game_provider.dart';
+import 'package:flutter_chess/constants/app_constants.dart'; // Added for PlayerColor
 
 class GameSetupScreen extends HookWidget {
   const GameSetupScreen({super.key});
@@ -27,7 +28,7 @@ class GameSetupScreen extends HookWidget {
       'Bullet 5+0',
       'Classical 10+0',
       'Classical 30+0',
-      'Custom',
+      Constants.custom, // Use from app_routes
     ];
 
     // Handle time selection

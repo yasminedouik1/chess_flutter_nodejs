@@ -14,14 +14,3 @@ class Constants {
 
   static const String joinRoomScreen = '/joinRoomScreen';
 }
-
-enum PlayerColor {
-  white,
-  black,
-}
-
-enum GameDifficulty {
-  easy,
-  medium,
-  hard,
-}
