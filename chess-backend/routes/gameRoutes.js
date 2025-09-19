@@ -179,6 +179,7 @@ router.post('/join/:gameId', authenticate, async (req, res) => {
       blackTime: game.blackTime,
       increment: game.increment,
       isWhiteTurn: true, // White always starts first
+      fen: game.fen, // Add current FEN
     });
     res.json({
       gameId,
@@ -258,6 +259,7 @@ router.post('/join-by-code', auth, async (req, res) => {
       blackTime: game.blackTime,
       increment: game.increment,
       isWhiteTurn: true, // White always starts first
+      fen: game.fen, // Add current FEN
     });
     res.json({
       gameId: game.gameId,

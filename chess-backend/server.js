@@ -236,6 +236,84 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Player explicitly leaves the game
+  socket.on('player_left', async ({ gameId, userId }) => {
+    try {
+      const Game = require('./models/Game');
+      const game = await Game.findOne({ gameId });
+
+      if (!game) {
+        console.log(`Game ${gameId} not found for player_left event.`);
+        return;
+      }
+
+      // Determine who left and who is the winner
+      let winnerId;
+      let winnerSide;
+      let opponentSocketId;
+      let opponentIdForEmit; // To send opponentId in the emit
+
+      if (game.creatorId.toString() === userId) {
+        // Creator left, opponent wins
+        winnerId = game.opponentId;
+        winnerSide = game.isWhitesTurn ? 'black' : 'white'; // If white's turn, current player is white (creator), black (opponent) wins
+        opponentIdForEmit = game.opponentId; // Opponent is the winner
+      } else if (game.opponentId && game.opponentId.toString() === userId) {
+        // Opponent left, creator wins
+        winnerId = game.creatorId;
+        winnerSide = game.isWhitesTurn ? 'white' : 'black'; // If white's turn, current player is white (creator), white (creator) wins
+        opponentIdForEmit = game.creatorId; // Creator is the winner
+      } else {
+        console.log(`User ${userId} leaving game ${gameId} but not found as creator or opponent.`);
+        return;
+      }
+
+      game.isPlaying = false;
+      game.result = 'player_left_wins'; // Custom result to indicate win by opponent leaving
+      await game.save();
+
+      // Find the opponent's socket and notify them
+      const socketsInRoom = await io.in(gameId).fetchSockets();
+      for (const s of socketsInRoom) {
+        if (s.userId.toString() === winnerId.toString()) {
+          opponentSocketId = s.id;
+          break;
+        }
+      }
+
+      if (opponentSocketId) {
+        io.to(opponentSocketId).emit('opponent_left', {
+          gameId: gameId,
+          winnerSide: winnerSide,
+          reason: 'opponentLeft',
+          // The userId of the player who won (i.e., the remaining player)
+          winningPlayerId: winnerId.toString(),
+        });
+        console.log(`Notified opponent ${winnerId} in game ${gameId} that other player left. Winner side: ${winnerSide}`);
+
+        // Set a flag on the leaving player's socket to indicate this game was handled by player_left
+        const leavingPlayerSockets = await io.in(gameId).fetchSockets();
+        for (const s of leavingPlayerSockets) {
+          if (s.userId.toString() === userId) {
+            s.gameHandledByPlayerLeft = s.gameHandledByPlayerLeft || {};
+            s.gameHandledByPlayerLeft[gameId] = true;
+            break;
+          }
+        }
+      }
+
+      // Delete the game after a short delay to allow opponent to receive event
+      setTimeout(async () => {
+        await Game.deleteOne({ gameId });
+        io.to('lobby').emit('game_removed', { gameId });
+        console.log(`Game ${gameId} deleted after player_left event.`);
+      }, 1000); // 1 second delay
+
+    } catch (err) {
+      console.error('Error handling player_left event:', err);
+    }
+  });
+
   // Rematch offer (post-game)
   socket.on('rematch', async (data) => {
   const { gameId, opponentId, whiteTime, blackTime, isPrivate } = data;
@@ -347,69 +425,88 @@ io.on('connection', (socket) => {
     console.log(`User ${socket.userId} disconnected`);
     if (!socket.userId) {
       console.error('Disconnect handler: socket.userId is missing.');
-      return; // Cannot process disconnect without userId
+      return;
     }
 
-    console.log('Currently connected users:');
-    const connectedSockets = await io.fetchSockets();
-    connectedSockets.forEach(s => {
-        console.log(`- Socket ID: ${s.id}, User ID: ${s.userId}`);
-    });
-
     try {
-      // Find games where this user is the creator and not playing
-      const creatorGames = await Game.find({
+      // Find games where this user is the creator and not playing (waiting lobby)
+      const creatorWaitingGames = await Game.find({
         creatorId: socket.userId,
-        isPlaying: false, // Only delete if the game has not started yet
+        isPlaying: false,
       });
-      
-      // Delete creator's waiting games
-      for (const game of creatorGames) {
+
+      for (const game of creatorWaitingGames) {
         await Game.deleteOne({ gameId: game.gameId });
         io.to(game.gameId).emit('game_deleted', {
           gameId: game.gameId,
-          reason: 'creator_disconnected'
+          reason: 'creator_disconnected',
         });
         io.to('lobby').emit('game_removed', { gameId: game.gameId });
-        console.log(`Deleted game ${game.gameId} - creator disconnected`);
+        console.log(`Deleted game ${game.gameId} - creator disconnected from waiting lobby`);
       }
-      
-      // Find games where this user is a creator AND is playing (i.e., opponent disconnected or left during an active game)
-      const playingCreatorGames = await Game.find({
+
+      // Find games where this user is the creator AND is playing (active game)
+      const creatorActiveGames = await Game.find({
         creatorId: socket.userId,
         isPlaying: true,
       });
 
-      // Handle active games where the creator disconnects
-      for (const game of playingCreatorGames) {
-        game.result = game.creatorId === socket.userId ? 'opponent_wins_by_disconnection' : 'creator_wins_by_disconnection';
+      for (const game of creatorActiveGames) {
         game.isPlaying = false; // Mark game as not playing
+        game.result = 'creator_disconnected'; // Custom result
         await game.save();
-        io.to(game.gameId).emit('game_over', {
+
+        // Notify opponent that creator disconnected and they win
+        io.to(game.opponentId.toString()).emit('opponent_left', {
           gameId: game.gameId,
-          reason: 'player_disconnected',
-          winnerSide: game.creatorId === socket.userId ? 'black' : 'white', // The other player wins
+          winnerSide: game.isWhitesTurn ? 'black' : 'white', // If creator was white, opponent (black) wins
+          reason: 'opponentLeft',
+          winningPlayerId: game.opponentId.toString(),
         });
-        console.log(`Game ${game.gameId} ended - ${socket.userId} disconnected during active game.`);
+        console.log(`Creator ${socket.userId} disconnected from active game ${game.gameId}. Notified opponent.`);
+
+        // Delete the game after a short delay
+        setTimeout(async () => {
+          await Game.deleteOne({ gameId: game.gameId });
+          io.to('lobby').emit('game_removed', { gameId: game.gameId });
+          console.log(`Game ${game.gameId} deleted after creator disconnection.`);
+        }, 1000);
       }
-      
-      // Find games where this user is the opponent
-      const opponentGames = await Game.find({
+
+      // Find games where this user is the opponent AND is playing (active game)
+      const opponentActiveGames = await Game.find({
         opponentId: socket.userId,
-        isPlaying: true
+        isPlaying: true,
       });
-      
-      // Reset opponent games to waiting state
-      for (const game of opponentGames) {
-        game.opponentId = null;
-        game.opponentName = null;
-        game.opponentImage = null;
-        game.opponentRating = null;
-        game.isPlaying = false;
+
+      for (const game of opponentActiveGames) {
+        // Check if this game was already handled by an explicit player_left event
+        if (socket.gameHandledByPlayerLeft && socket.gameHandledByPlayerLeft[game.gameId]) {
+          console.log(`Game ${game.gameId} already handled by player_left for opponent ${socket.userId}. Skipping disconnect processing.`);
+          continue;
+        }
+
+        game.isPlaying = false; // Mark game as not playing
+        game.result = 'opponent_disconnected'; // Custom result
         await game.save();
-        io.to(game.gameId).emit('opponent_left', { gameId: game.gameId });
-        console.log(`Reset game ${game.gameId} - opponent disconnected`);
+
+        // Notify creator that opponent disconnected and they win
+        io.to(game.creatorId.toString()).emit('opponent_left', {
+          gameId: game.gameId,
+          winnerSide: game.isWhitesTurn ? 'white' : 'black', // If creator was white, creator (white) wins
+          reason: 'opponentLeft',
+          winningPlayerId: game.creatorId.toString(),
+        });
+        console.log(`Opponent ${socket.userId} disconnected from active game ${game.gameId}. Notified creator.`);
+
+        // Delete the game after a short delay
+        setTimeout(async () => {
+          await Game.deleteOne({ gameId: game.gameId });
+          io.to('lobby').emit('game_removed', { gameId: game.gameId });
+          console.log(`Game ${game.gameId} deleted after opponent disconnection.`);
+        }, 1000);
       }
+
     } catch (err) {
       console.error('Error handling disconnect:', err);
     }

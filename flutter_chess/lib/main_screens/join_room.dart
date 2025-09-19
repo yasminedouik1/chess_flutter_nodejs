@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
+// import 'package:bishop/bishop.dart' as bishop;
 import '../app_routes.dart'; // Changed from constants.dart
 import '../services/api_service.dart';
 import '../widgets/widgets.dart';
@@ -76,6 +77,20 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
       gameProvider.isHumanWhite = false; // Joiner is black
       gameProvider.setPlayerColor(player: 1); // Black player
       gameProvider.setIsPlaying(true);
+
+      // Initialize the game board for the joiner using the FEN from gameData
+      gameProvider.setGameFromFen(data['fen']);
+
+      // Start black's timer since the joiner is black and waiting for white's first move
+      final currentContext = context;
+      if (!currentContext.mounted) return; // Guard against context across async gap
+      gameProvider.startBlacksTime(context: currentContext, onNewGame: () {});
+      
+      // Initialize socket and join the game room
+      if (ApiService.socket == null || !ApiService.socket!.connected) {
+        ApiService.initializeSocket(token);
+      }
+      ApiService.joinGameRoom(gameProvider.gameId);
       
       // Initialize socket listeners for the joiner
       final authProvider = context.read<AuthProvider>();
@@ -83,6 +98,7 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
       
       if (!mounted) return;
       Navigator.pushNamed(context, Constants.gameScreen);
+      
     } catch (e) {
       if (!mounted) {
         return; // Guard against context across async gap

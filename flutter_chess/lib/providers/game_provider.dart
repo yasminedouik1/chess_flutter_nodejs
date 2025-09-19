@@ -400,6 +400,16 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setGameFromFen(String? fen) {
+    if (fen != null) {
+      _game = bishop.Game(variant: bishop.Variant.standard(), fen: fen);
+    } else {
+      _game = bishop.Game(variant: bishop.Variant.standard()); // Defaults to starting position
+    }
+    _state = _game.squaresState(_player);
+    notifyListeners();
+  }
+
   // In api_service.dart
   // In game_provider.dart
   Future<void> createGame({
@@ -1208,8 +1218,8 @@ void gameOverDialog({
       
       // Determine if the current player is the winner
       bool userWon = false;
-      if (winningPlayerId != null && userId != null) {
-        userWon = (winningPlayerId == userId);
+      if (winningPlayerId != null && userId == winningPlayerId) {
+        userWon = true;
       }
 
       if (gameId == _gameId) {
