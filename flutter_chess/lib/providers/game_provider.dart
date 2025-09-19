@@ -728,62 +728,62 @@ void gameOverDialog({
   String? reason,
 }) {
   String resultsToShow = '';
-  double tempWhitesScore = _whitesScore;
-  double tempBlacksScore = _blacksScore;
+  double tempWhitesScore = 0.0; // Initialize to 0.0 for current game's score
+  double tempBlacksScore = 0.0; // Initialize to 0.0 for current game's score
 
   if (timeOut) {
     resultsToShow = userWon ? 'You won on time' : 'Opponent won on time';
     if (userWon) {
       if (_isHumanWhite) {
-        tempWhitesScore += 1.0;
+        tempWhitesScore = 1.0;
       } else {
-        tempBlacksScore += 1.0;
+        tempBlacksScore = 1.0;
       }
     } else {
       if (_isHumanWhite) {
-        tempBlacksScore += 1.0;
+        tempBlacksScore = 1.0;
       } else {
-        tempWhitesScore += 1.0;
+        tempWhitesScore = 1.0;
       }
     }
   } else if (reason == GameOverReason.draw) {
     resultsToShow = 'Draw';
-    tempWhitesScore += 0.5;
-    tempBlacksScore += 0.5;
+    tempWhitesScore = 0.5;
+    tempBlacksScore = 0.5;
   } else if (reason == GameOverReason.resign) {
     resultsToShow = userWon ? 'Opponent resigned' : 'You resigned';
     if (userWon) {
       if (_isHumanWhite) {
-        tempWhitesScore += 1.0;
+        tempWhitesScore = 1.0;
       } else {
-        tempBlacksScore += 1.0;
+        tempBlacksScore = 1.0;
       }
     } else {
       if (_isHumanWhite) {
-        tempBlacksScore += 1.0;
+        tempBlacksScore = 1.0;
       } else {
-        tempWhitesScore += 1.0;
+        tempWhitesScore = 1.0;
       }
     }
   } else if (reason == GameOverReason.checkmate) {
     resultsToShow = userWon ? 'You won by checkmate' : 'Opponent won by checkmate';
     if (userWon) {
       if (_isHumanWhite) {
-        tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
+        tempWhitesScore = 1.0;
       } else {
-        tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
+        tempBlacksScore = 1.0;
       }
     } else {
       if (_isHumanWhite) {
-        tempBlacksScore = (_blacksScore + 1.0).clamp(0.0, double.infinity);
+        tempBlacksScore = 1.0;
       } else {
-        tempWhitesScore = (_whitesScore + 1.0).clamp(0.0, double.infinity);
+        tempWhitesScore = 1.0;
       }
     }
   }
 
-  _whitesScore = tempWhitesScore;
-  _blacksScore = tempBlacksScore;
+  _whitesScore = tempWhitesScore; // Assign the calculated score
+  _blacksScore = tempBlacksScore; // Assign the calculated score
 
   if (!context.mounted) return; // Guard against context across async gap
   showDialog(
