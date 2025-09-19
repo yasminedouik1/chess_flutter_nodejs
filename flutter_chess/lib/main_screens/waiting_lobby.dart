@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../app_routes.dart'; // Changed from constants.dart
+import '../providers/auth_provider.dart'; // Added import for AuthProvider
 
 class WaitingLobby extends StatefulWidget {
   const WaitingLobby({super.key}); // Use super.key
@@ -17,7 +18,8 @@ class _WaitingLobbyState extends State<WaitingLobby> {
   void initState() {
     super.initState();
     // Initialize socket listeners in GameProvider
-    context.read<GameProvider>().initSocketListeners(context);
+    final authProvider = context.read<AuthProvider>();
+    context.read<GameProvider>().initSocketListeners(authProvider.userId, authProvider.token, context);
     context.read<GameProvider>().startWaitingTimer(context: context);
 
     // Add listener for game status changes

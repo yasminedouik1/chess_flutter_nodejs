@@ -110,26 +110,21 @@ class GameScreen extends HookWidget {
 
     // Handle exit
     Future<void> handleExit(BuildContext context) async {
-      final shouldExit = await showExitConfirmDialog(context);
-      if (shouldExit == true && context.mounted) {
-        if (gameProvider.vsComputer) {
-          gameProvider.pauseWhitesTimer();
-          gameProvider.pauseBlacksTimer();
+      // No confirmation dialog, directly proceed to leave or navigate
+      if (gameProvider.vsComputer) {
+        gameProvider.pauseWhitesTimer();
+        gameProvider.pauseBlacksTimer();
+        if (context.mounted) {
           Navigator.pushNamedAndRemoveUntil(
             context,
             Constants.homeScreen, // Changed to Constants.homeScreen
             (route) => false,
           );
-        } else {
-          await gameProvider.leaveGame(context);
-          if (context.mounted) {
-            Navigator.pushNamedAndRemoveUntil(
-              context,
-              Constants.homeScreen, // Changed to Constants.homeScreen
-              (route) => false,
-            );
-          }
         }
+      } else {
+        await gameProvider.leaveGame(context);
+        // The leaveGame method now handles navigation to homeScreen
+        // No need for additional navigation here.
       }
     }
 
@@ -211,22 +206,24 @@ class GameScreen extends HookWidget {
           if (!gameProvider.isPlaying) {
             gameProvider.resetGame(newGame: false, context: context);
           }
-          gameProvider.initSocketListeners(context);
-          startTimer(
-            context,
-            isWhiteTimer: gameProvider.isHumanWhite,
-            onNewGame: () {},
-          );
+          gameProvider.initSocketListeners(authProvider.userId, authProvider.token, context);
+          if (context.mounted) {
+            startTimer(
+              context,
+              isWhiteTimer: gameProvider.isHumanWhite,
+              onNewGame: () {},
+            );
+          }
         }
       });
 
       // Cleanup on dispose
       return () {
-        gameProvider.pauseWhitesTimer();
-        gameProvider.pauseBlacksTimer();
         if (!gameProvider.vsComputer) {
-          // ApiService.disposeSocket(); // Removed to prevent premature disconnections
+          gameProvider.pauseWhitesTimer();
+          gameProvider.pauseBlacksTimer();
         }
+        // ApiService.disposeSocket(); // Removed to prevent premature disconnections
       };
     }, []);
 
@@ -244,7 +241,7 @@ class GameScreen extends HookWidget {
     }, [gameProvider.drawOfferedByOpponent, gameProvider.rematchOffered]);
 
     // Return waiting lobby if not playing and not vs computer
-    if (!gameProvider.isPlaying && !gameProvider.vsComputer) {
+    if (!gameProvider.isPlaying && !gameProvider.vsComputer && gameProvider.gameId.isNotEmpty) {
       return const WaitingLobby();
     }
 
@@ -284,9 +281,9 @@ class GameScreen extends HookWidget {
           ListTile(
             leading: CircleAvatar(
               radius: 25,
-              backgroundImage: (gameProvider.vsComputer || gameProvider.opponentImage.isEmpty)
+              backgroundImage: (gameProvider.vsComputer || gameProvider.opponentImage == null || gameProvider.opponentImage.isEmpty)
                   ? const AssetImage('assets/images/computer.png')
-                  : NetworkImage(gameProvider.opponentImage) as ImageProvider,
+                  : NetworkImage(gameProvider.opponentImage),
               backgroundColor: const Color(0xFF3A3A6A),
             ),
             title: Text(
@@ -342,7 +339,7 @@ class GameScreen extends HookWidget {
               radius: 25,
               backgroundImage: (user?.image == null || user!.image.isEmpty)
                   ? AssetImage(AssetsManager.userIcon)
-                  : NetworkImage(user.image) as ImageProvider,
+                  : NetworkImage(user.image),
               backgroundColor: const Color(0xFF3A3A6A),
             ),
             title: Text(

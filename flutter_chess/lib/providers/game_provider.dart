@@ -455,7 +455,7 @@ class GameProvider extends ChangeNotifier {
       ApiService.joinGameRoom(_gameId);
       final currentContext = context;
       if (!currentContext.mounted) return;
-      initSocketListeners(currentContext);
+      initSocketListeners(userId, token, currentContext);
       // Navigate to WaitingLobby, where timer and opponent joined listener will handle redirection
       if (!currentContext.mounted) return; // Guard against context across async gap
       Navigator.pushNamed(currentContext, Constants.waitingLobby); // Changed to Constants.waitingLobby
@@ -547,7 +547,6 @@ class GameProvider extends ChangeNotifier {
         gameId: gameId,
         userId: userId,
       );
-      
       _gameId = gameData['gameId'];
       _opponentId = gameData['creatorId'];
       _opponentName = gameData['creatorName'];
@@ -558,9 +557,14 @@ class GameProvider extends ChangeNotifier {
       _isHumanWhite = false; // Joiner is black
       _player = Squares.black;
       _isPlaying = true;
-      
-      // Initialize the game board for the joiner
-      _game = bishop.Game(variant: bishop.Variant.standard());
+
+      // Initialize the game board for the joiner using the FEN from gameData
+      final String? fen = gameData['fen'];
+      if (fen != null) {
+        _game = bishop.Game(variant: bishop.Variant.standard(), fen: fen);
+      } else {
+        _game = bishop.Game(variant: bishop.Variant.standard()); // Defaults to starting position
+      }
       _state = _game.squaresState(_player);
 
       // Start black's timer since the joiner is black and waiting for white's first move
@@ -576,7 +580,7 @@ class GameProvider extends ChangeNotifier {
       
       // Initialize socket listeners for the joiner
       if (!currentContext.mounted) return; // Guard against context across async gap
-      initSocketListeners(currentContext);
+      initSocketListeners(userId, token, currentContext);
       
       // Navigate to game screen immediately for the joiner
       if (!currentContext.mounted) return; // Guard against context across async gap
@@ -682,12 +686,16 @@ class GameProvider extends ChangeNotifier {
 
   void pauseWhitesTimer() {
     _whitesTimer?.cancel();
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void pauseBlacksTimer() {
     _blacksTimer?.cancel();
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void gameOverListener({
@@ -799,31 +807,39 @@ void gameOverDialog({
         TextButton(
           onPressed: () {
             Navigator.pop(context);
-            if (!context.mounted) return; // Guard against context across async gap
+            if (!context.mounted) return;
+            resetPvPFields(); // Ensure PvP fields are reset
             Navigator.pushNamedAndRemoveUntil(
               context,
-              Constants.homeScreen, // Changed to Constants.homeScreen
+              Constants.homeScreen,
               (route) => false,
             );
           },
-          child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+          child: const Text('Back to Home', style: TextStyle(color: Colors.red)), // Changed button text
         ),
         TextButton(
           onPressed: () {
             Navigator.pop(context);
-            if (!context.mounted) return; // Guard against context across async gap
-            resetGame(newGame: true, context: context);
-            onNewGame();
+            if (!context.mounted) return;
+            resetPvPFields(); // Ensure PvP fields are reset
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              Constants.joinRoomScreen, // Navigate to join room screen
+              (route) => false,
+            );
           },
           child: const Text(
-            'New Game',
+            'Join Other Game',
             style: TextStyle(color: Colors.white),
           ),
         ),
       ],
     ),
   );
-  notifyListeners();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!context.mounted) return;
+    notifyListeners();
+  });
 }
   void startWaitingTimer({required BuildContext context}) {
     int secondsLeft = waitingLobbyTimeoutSeconds; // Updated constant
@@ -879,24 +895,34 @@ void gameOverDialog({
 
   Future<void> leaveGame(BuildContext context) async {
     final token = context.read<AuthProvider>().token;
+    final userId = context.read<AuthProvider>().userId;
     
-    if (token != null && _gameId.isNotEmpty) {
+    if (token != null && _gameId.isNotEmpty && userId != null) {
       try {
-        // Cancel the game (delete it) when leaving the waiting lobby
-        await ApiService.cancelGame(token: token, gameId: _gameId);
+        // Emit 'player_left' event to the server
+        ApiService.socket?.emit('player_left', {
+          'gameId': _gameId,
+          'userId': userId,
+        });
         _waitingTimer?.cancel();
         resetPvPFields();
         notifyListeners();
+        // Navigate to home screen directly
+        if (context.mounted) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            Constants.homeScreen,
+            (route) => false,
+          );
+        }
       } catch (e) {
-        // Even if leave fails, clean up local state
         _waitingTimer?.cancel();
         resetPvPFields();
         notifyListeners();
-        if (!context.mounted) return; // Guard against context across async gap
+        if (!context.mounted) return;
         showSnackBar(context: context, content: 'Failed to leave game: $e');
       }
     } else {
-      // Clean up local state even if we can't leave on server
       _waitingTimer?.cancel();
       resetPvPFields();
       notifyListeners();
@@ -912,7 +938,8 @@ void gameOverDialog({
     _opponentRating = 1200;
     _drawOffered = false;
     _rematchOffered = false;
-    _isPlaying = false;
+    _isPlaying = false; // Ensure isPlaying is reset
+    _vsComputer = false; // Ensure vsComputer is reset for multiplayer context
     ApiService.disposeSocket(); // Dispose socket when PvP fields are reset
   }
   
@@ -982,32 +1009,33 @@ void gameOverDialog({
     notifyListeners();
   }
 
-  void initSocketListeners(BuildContext context) {
+  void initSocketListeners(String? userId, String? token, BuildContext context) {
+    if (userId == null || token == null) return; // Ensure userId and token are available
     ApiService.onOpponentJoined(context, (data) {
       _gameId = data['gameId'];
       
       // Determine if the current user is the creator or the joiner
-      final currentUserIsCreator = data['creatorId'] == context.read<AuthProvider>().userId;
+      final currentUserIsCreator = data['creatorId'] == userId; // Use directly passed userId
 
       if (currentUserIsCreator) {
         // If current user is creator, opponent is the joiner
         _opponentId = data['opponentId'];
         _opponentName = data['opponentName'];
         _opponentImage = data['opponentImage'];
-        _opponentRating = data['opponentRating'];
+        _opponentRating = (data['opponentRating'] as num).toInt();
       } else {
         // If current user is joiner, opponent is the creator
         _opponentId = data['creatorId'];
         _opponentName = data['creatorName'];
         _opponentImage = data['creatorImage'];
-        _opponentRating = data['creatorRating'];
+        _opponentRating = (data['creatorRating'] as num).toInt();
       }
 
       _whitesTime = Duration(seconds: (data['whiteTime'] as num).toInt());
       _blacksTime = Duration(seconds: (data['blackTime'] as num).toInt());
       _isPlaying = true;
       // Determine if the current user is white or black based on who created the game
-      _isHumanWhite = data['creatorId'] == context.read<AuthProvider>().userId;
+      _isHumanWhite = data['creatorId'] == userId; // Use directly passed userId
       _player = _isHumanWhite ? Squares.white : Squares.black;
 
       // Reset the game to initial position and set up board state
@@ -1022,6 +1050,9 @@ void gameOverDialog({
         pauseWhitesTimer();
       }
 
+      // Cancel the waiting timer if it's running
+      _waitingTimer?.cancel();
+
       // Navigate both players to the game screen
       final currentContext = context;
       if (!currentContext.mounted) return; // Guard against context across async gap
@@ -1030,6 +1061,9 @@ void gameOverDialog({
         Constants.gameScreen, // Changed to Constants.gameScreen
         (route) => false,
       );
+      if (currentUserIsCreator) { // Only show snackbar to the creator
+        showSnackBar(context: context, content: 'Opponent joined game.');
+      }
       notifyListeners();
     });
 
@@ -1166,36 +1200,45 @@ void gameOverDialog({
       }
     });
 
-    // Handle opponent leaving
+    // Handle opponent leaving (new)
     ApiService.onOpponentLeft((data) {
       final gameId = data['gameId'];
+      final winningPlayerId = data['winningPlayerId']; // Get winningPlayerId from backend
+      // final currentUserId = context.read<AuthProvider>().userId; // Removed as userId is passed directly
+      
+      // Determine if the current player is the winner
+      bool userWon = false;
+      if (winningPlayerId != null && userId != null) {
+        userWon = (winningPlayerId == userId);
+      }
+
       if (gameId == _gameId) {
         _opponentId = '';
         _opponentName = '';
         _opponentImage = '';
         _opponentRating = 1200;
         _isPlaying = false;
+        resetPvPFields(); // Reset PvP fields
         final currentContext = context;
-        if (!currentContext.mounted) return; // Guard against context across async gap
+        if (!currentContext.mounted) return;
         Navigator.pushNamedAndRemoveUntil(
           currentContext,
-          Constants.homeScreen, // Changed to Constants.homeScreen
+          Constants.homeScreen,
           (route) => false,
         );
-        if (!currentContext.mounted) return; // Guard against context across async gap
-        showSnackBar(
-          context: currentContext,
-          content: 'Opponent left the game',
-        );
+        if (userWon) {
+          showSnackBar(
+            context: currentContext,
+            content: 'Opponent left. You won!',
+          );
+        } else {
+          showSnackBar(
+            context: currentContext,
+            content: 'Opponent left.',
+          );
+        }
         notifyListeners();
       }
-    });
-
-    // Handle game removed from lobby (refresh available games)
-    ApiService.onGameRemoved((data) {
-      // Remove the game from available games list
-      _availableGames.removeWhere((game) => game['gameId'] == data['gameId']);
-      notifyListeners();
     });
   }
 

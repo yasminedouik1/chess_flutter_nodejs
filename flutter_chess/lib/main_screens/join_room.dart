@@ -21,7 +21,8 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
   void initState() {
     super.initState();
     // Initialize socket listeners in GameProvider
-    context.read<GameProvider>().initSocketListeners(context);
+    final authProvider = context.read<AuthProvider>();
+    context.read<GameProvider>().initSocketListeners(authProvider.userId, authProvider.token, context);
     // Fetch available games
     context.read<GameProvider>().fetchAvailableGames(context);
   }
@@ -77,7 +78,8 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
       gameProvider.setIsPlaying(true);
       
       // Initialize socket listeners for the joiner
-      gameProvider.initSocketListeners(context);
+      final authProvider = context.read<AuthProvider>();
+      gameProvider.initSocketListeners(authProvider.userId, authProvider.token, context);
       
       if (!mounted) return;
       Navigator.pushNamed(context, Constants.gameScreen);

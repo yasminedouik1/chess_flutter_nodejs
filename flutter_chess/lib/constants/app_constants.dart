@@ -12,6 +12,7 @@ class GameOverReason {
   static const String checkmate = 'checkmate';
   static const String resign = 'resign';
   static const String timeout = 'timeout';
+  static const String opponentLeft = 'opponentLeft'; // Added for player leaving
 }
 
 // Waiting Lobby
