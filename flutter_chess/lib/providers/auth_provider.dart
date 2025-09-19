@@ -61,23 +61,24 @@ class AuthProvider extends ChangeNotifier {
 
     if (result['success'] == true) {
       // Signup succeeded, now login to get token
-      await login(email: email, password: password);
+      await login(username: username, password: password);
     } else {
       throw Exception(result['message'] ?? 'Signup failed');
     }
   }
 
-  Future<void> login({required String email, required String password}) async {
-    final result = await ApiService.login(email: email, password: password);
+  Future<void> login(
+      {required String username, required String password}) async {
+    final result = await ApiService.login(username: username, password: password);
     if (result['success'] == true) {
       _token = await ApiService.getToken();
       _userId = await ApiService.getUserId();
       final fetchedUsername =
-          await ApiService.getUsername() ?? email; // Fallback to email
+          await ApiService.getUsername() ?? username; // Fallback to username
       _user = UserModel(
         uid: _userId ?? '',
         username: fetchedUsername,
-        email: email,
+        email: '', // Email is no longer a primary login field, can be fetched separately if needed
         image: '', // Fetch if needed
         playerRating: 1200, // Fetch if needed
       );

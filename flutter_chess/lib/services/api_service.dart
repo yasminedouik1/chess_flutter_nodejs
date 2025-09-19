@@ -83,9 +83,6 @@ class ApiService {
       }),
     );
 
-    /*print('Signup API status: ${response.statusCode}')*/ null;
-    /*print('Signup API body: ${response.body}')*/ null;
-
     final data = _safeDecode(response.body);
 
     if (response.statusCode == 200 || response.statusCode == 201) {
@@ -118,18 +115,15 @@ class ApiService {
 
   // Login
   static Future<Map<String, dynamic>> login({
-    required String email,
+    required String username, // Changed from email
     required String password,
   }) async {
     final url = Uri.parse('$baseUrl/auth/login');
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
+      body: jsonEncode({'username': username, 'password': password}), // Changed from email
     );
-
-    /*print('Login API status: ${response.statusCode}')*/ null;
-    /*print('Login API body: ${response.body}')*/ null;
 
     final data = _safeDecode(response.body);
 
@@ -138,11 +132,7 @@ class ApiService {
       final userId = _extractUserId(data);
       final savedUsername =
           _extractUsername(data) ??
-          email; // Fallback to email if username is null
-
-      /*print('Extracted token: $token')*/ null;
-      /*print('Extracted userId: $userId')*/ null;
-      /*print('Extracted username: $savedUsername')*/ null;
+          username; // Fallback to username if username is null
 
       if (token != null && userId != null) {
         await saveUser(userId, token, savedUsername);
@@ -181,7 +171,6 @@ class ApiService {
     required bool isPrivate,
     String? joinCode,
   }) async {
-    // /*print('createGame API call - token: ${token.substring(0, 10)}..., userId: $userId')*/ null;
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/games'),
@@ -194,8 +183,6 @@ class ApiService {
           'joinCode': joinCode,
         }),
       );
-      // /*print('createGame API response status: ${response.statusCode}')*/ null;
-      // /*print('createGame API response body: ${response.body}')*/ null;
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -204,7 +191,6 @@ class ApiService {
         throw Exception(error['message'] ?? 'Failed to create game');
       }
     } catch (e) {
-      // /*print('Error in createGame: $e')*/ null;
       rethrow;
     }
   }
@@ -224,7 +210,6 @@ class ApiService {
         throw Exception(error['message'] ?? 'Failed to fetch available games');
       }
     } catch (e) {
-      // /*print('Error fetching available games: $e')*/ null;
       rethrow;
     }
   }
@@ -234,7 +219,6 @@ class ApiService {
     required String gameId,
     required String userId,
   }) async {
-    // /*print('joinGame API call - gameId: $gameId, userId: $userId')*/ null;
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/games/join/$gameId'),
@@ -243,8 +227,6 @@ class ApiService {
           'userId': userId,
         }),
       );
-      // /*print('joinGame API response status: ${response.statusCode}')*/ null;
-      // /*print('joinGame API response body: ${response.body}')*/ null;
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -253,7 +235,6 @@ class ApiService {
         throw Exception(error['message'] ?? 'Failed to join game');
       }
     } catch (e) {
-      // /*print('Error in joinGame: $e')*/ null;
       rethrow;
     }
   }
@@ -262,7 +243,6 @@ class ApiService {
     required String token,
     required String joinCode,
   }) async {
-    // /*print('joinGameByCode API call - joinCode: $joinCode')*/ null;
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/games/join-by-code'),
@@ -271,8 +251,6 @@ class ApiService {
           'joinCode': joinCode,
         }),
       );
-      // /*print('joinGameByCode API response status: ${response.statusCode}')*/ null;
-      // /*print('joinGameByCode API response body: ${response.body}')*/ null;
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -281,7 +259,6 @@ class ApiService {
         throw Exception(error['message'] ?? 'Failed to join game by code');
       }
     } catch (e) {
-      // /*print('Error in joinGameByCode: $e')*/ null;
       rethrow;
     }
   }
@@ -290,13 +267,11 @@ class ApiService {
     required String token,
     required String gameId,
   }) async {
-    // /*print('cancelGame API call - gameId: $gameId')*/ null;
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/games/cancel/$gameId'),
         headers: {'Authorization': 'Bearer $token'},
       );
-      // /*print('cancelGame API response status: ${response.statusCode}')*/ null;
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
@@ -304,7 +279,6 @@ class ApiService {
         throw Exception(error['message'] ?? 'Failed to cancel game');
       }
     } catch (e) {
-      // /*print('Error in cancelGame: $e')*/ null;
       rethrow;
     }
   }
@@ -370,20 +344,17 @@ class ApiService {
         throw Exception(error['message'] ?? 'Failed to get game status');
       }
     } catch (e) {
-      // /*print('Error getting game status: $e')*/ null;
       rethrow;
     }
   }
 
   static void disposeSocket() {
     socket?.disconnect();
-    // /*print('Socket disconnected and set to null')*/ null;
     socket = null;
   }
 
   static void initializeSocket(String? token) {
     if (token == null) {
-      // /*print('No token provided for socket initialization')*/ null;
       return;
     }
 
@@ -400,14 +371,13 @@ class ApiService {
     );
 
     socket!.connect();
-    socket!.onConnect((_) => /*print('Socket connected')*/ null);
-    socket!.onConnectError((data) => /*print('Socket connection error: $data')*/ null);
-    socket!.onError((data) => /*print('Socket error: $data')*/ null);
-    socket!.onDisconnect((reason) => /*print('Socket disconnected: $reason')*/ null);
+    socket!.onConnect((_) => null);
+    socket!.onConnectError((data) => null);
+    socket!.onError((data) => null);
+    socket!.onDisconnect((reason) => null);
   }
 
   static void joinGameRoom(String gameId) {
-    // /*print('Attempting to join game room: $gameId')*/ null;
     socket?.emit('join_game', {'gameId': gameId});
   }
 

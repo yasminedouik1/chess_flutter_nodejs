@@ -34,9 +34,9 @@ router.post('/signup', async (req, res) => {
 
 // LOGIN
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { username, password } = req.body; // Changed from email
   try {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ username }); // Changed from email
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const isMatch = await bcrypt.compare(password, user.password);

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:bishop/bishop.dart' as bishop;
 import 'package:flutter/material.dart';
-import 'package:flutter_chess/app_routes.dart'; // Changed from constants.dart
+import 'package:flutter_chess/app_routes.dart';
 import 'package:flutter_chess/models/user_model.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/services/api_service.dart';
@@ -11,7 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:square_bishop/square_bishop.dart';
 import 'package:squares/squares.dart';
 import 'package:stockfish/stockfish.dart';
-import 'package:flutter_chess/constants/app_constants.dart'; // Import new constants file
+import 'package:flutter_chess/constants/app_constants.dart';
 
 Map<bishop.PieceType, String> pieceSymbols = {
   bishop.PieceType.king(): 'K',
@@ -105,7 +105,6 @@ class GameProvider extends ChangeNotifier {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
-
   void setState(SquaresState newState) {
     _state = newState;
     notifyListeners();
@@ -115,48 +114,11 @@ class GameProvider extends ChangeNotifier {
     return _game.fen;
   }
 
-  // Helper function to apply a move given a FEN and a move string (e.g., 'e2e4')
-  String? makeMove(String fen, String moveString, BuildContext context) {
-    try {
-      _game.loadFen(fen); // Ensure the game state is current
-
-      final legalMoves = _game.generateLegalMoves();
-      bishop.Move? targetBishopMove;
-
-      for (final legalMove in legalMoves) {
-        // Construct the algebraic string for the legal move, including promotion if applicable
-        String legalMoveAlgebraic = squareToAlgebraic(legalMove.from) +
-            squareToAlgebraic(legalMove.to);
-        if (pieceSymbols.containsKey(legalMove.promotion)) {
-          legalMoveAlgebraic +=
-              pieceSymbols[legalMove.promotion]!.toLowerCase();
-        }
-
-        if (legalMoveAlgebraic == moveString) {
-          targetBishopMove = legalMove;
-          break;
-        }
-      }
-
-      if (targetBishopMove != null) {
-        final success = _game.makeMove(targetBishopMove);
-        if (success) {
-          return _game.fen;
-        }
-      } else {
-        if (context.mounted) {
-          showSnackBar(context: context, content: 'Invalid or illegal move: $moveString');
-        }
-      }
-    } catch (e) {
-      if (context.mounted) {
-        showSnackBar(context: context, content: 'Error making move: $e');
-      }
-    }
-    return null;
-  }
-
   Future<void> initStockfish() async {
+    if (_stockfish != null) {
+      debugPrint('Stockfish already initialized.');
+      return;
+    }
     try {
       _stockfish = Stockfish();
       // Wait for Stockfish to be ready
@@ -177,7 +139,7 @@ class GameProvider extends ChangeNotifier {
       subscription.cancel();
       // Set skill level based on gameLevel (1: easy, 2: medium, 3: hard)
       _stockfish!.stdin =
-          'setoption name Skill Level value ${(_gameLevel * STOCKFISH_SKILL_LEVEL_MULTIPLIER).clamp(STOCKFISH_SKILL_LEVEL_MIN, STOCKFISH_SKILL_LEVEL_MAX)}';
+          'setoption name Skill Level value ${(_gameLevel * stockfishSkillLevelMultiplier).clamp(stockfishSkillLevelMin, stockfishSkillLevelMax)}';
     } catch (e) {
       debugPrint('Error initializing Stockfish: $e');
     }
@@ -186,10 +148,10 @@ class GameProvider extends ChangeNotifier {
   Future<String?> getStockfishMove(String fen, int level) async {
     if (_stockfish == null) return null;
     final movetime = switch (level) {
-      1 => AI_MOVETIME_EASY,
-      2 => AI_MOVETIME_MEDIUM,
-      3 => AI_MOVETIME_HARD,
-      _ => AI_MOVETIME_DEFAULT,
+      1 => 100, // Easy: 100ms
+      2 => 500, // Medium: 500ms
+      3 => 1000, // Hard: 1000ms
+      _ => 500,
     };
     _stockfish!.stdin = 'position fen $fen';
     _stockfish!.stdin = 'go movetime $movetime';
@@ -202,7 +164,7 @@ class GameProvider extends ChangeNotifier {
       }
     });
     try {
-      await completer.future.timeout(Duration(milliseconds: movetime + AI_MOVETIME_TIMEOUT_BUFFER));
+      await completer.future.timeout(Duration(milliseconds: movetime + aiMovetimeTimeoutBuffer));
     } catch (e) {
       debugPrint('Error getting Stockfish move: $e');
     } finally {
@@ -257,14 +219,14 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
     final currentContext = context; // Capture context here
     try {
-            await Future.delayed(Duration(milliseconds: Random().nextInt(AI_RANDOM_DELAY_MAX_MILLISECONDS)));
-            if (!currentContext.mounted) return; // Add mounted check after first await
-      final move = await getStockfishMove(_game.fen, _gameLevel);
+      await Future.delayed(Duration(milliseconds: Random().nextInt(aiRandomDelayMaxMilliseconds))); // Updated constant
+      if (!currentContext.mounted) return; // Add mounted check after first await
+      final moveString = await getStockfishMove(_game.fen, _gameLevel);
       if (!currentContext.mounted) return; // Add mounted check
-      if (move != null) {
-        final newFen = makeMove(_game.fen, move, currentContext); // Use captured context
-        if (newFen != null) {
-          _game.loadFen(newFen);
+      if (moveString != null) {
+        final squaresMove = _stockfishMoveToSquaresMoveString(moveString);
+        final result = makeSquaresMove(squaresMove);
+        if (result) {
           await setSquaresState();
           if (!currentContext.mounted) return; // Use captured context
           if (_isHumanWhite) {
@@ -274,6 +236,7 @@ class GameProvider extends ChangeNotifier {
             pauseWhitesTimer();
             startBlacksTime(context: currentContext, onNewGame: () {}); // Use captured context
           }
+          gameOverListener(context: currentContext, onNewGame: () {});
         }
       }
     } catch (e) {
@@ -289,6 +252,20 @@ class GameProvider extends ChangeNotifier {
     final file = String.fromCharCode('a'.codeUnitAt(0) + (index % 8));
     final rank = 8 - (index ~/ 8);
     return '$file$rank';
+  }
+
+  Move _stockfishMoveToSquaresMoveString(String stockfishMoveString) {
+    final fromAlgebraic = stockfishMoveString.substring(0, 2);
+    final toAlgebraic = stockfishMoveString.substring(2, 4);
+    String? promotionPiece;
+    if (stockfishMoveString.length == 5) {
+      promotionPiece = stockfishMoveString.substring(4, 5);
+    }
+    return Move(
+      from: _algebraicToIndex(fromAlgebraic),
+      to: _algebraicToIndex(toAlgebraic),
+      promo: promotionPiece,
+    );
   }
 
   Move _bishopMoveToSquaresMove(bishop.Move move) {
@@ -315,7 +292,7 @@ class GameProvider extends ChangeNotifier {
     if (newGame) {
       _player = _isHumanWhite ? Squares.white : Squares.black;
       _whitesScore = 0.0;
-    _blacksScore = 0.0;
+      _blacksScore = 0.0;
     }
     _game = bishop.Game(variant: bishop.Variant.standard());
     _state = _game.squaresState(_player);
@@ -331,7 +308,7 @@ class GameProvider extends ChangeNotifier {
       _opponentName = '';
       _opponentImage = '';
       _opponentRating = 1200;
-      _waitingText = WAITING_LOBBY_TIMEOUT_SECONDS.toString();
+      _waitingText = waitingLobbyTimeoutSeconds.toString(); // Updated constant
     }
     notifyListeners();
   }
@@ -418,7 +395,7 @@ class GameProvider extends ChangeNotifier {
       _ => GameDifficulty.easy, // Default to easy
     };
        if (_stockfish != null) {
-      _stockfish!.stdin = 'setoption name Skill Level value ${(_gameLevel * STOCKFISH_SKILL_LEVEL_MULTIPLIER).clamp(STOCKFISH_SKILL_LEVEL_MIN, STOCKFISH_SKILL_LEVEL_MAX)}';
+      _stockfish!.stdin = 'setoption name Skill Level value ${(_gameLevel * stockfishSkillLevelMultiplier).clamp(stockfishSkillLevelMin, stockfishSkillLevelMax)}';
     }
     notifyListeners();
   }
@@ -481,7 +458,7 @@ class GameProvider extends ChangeNotifier {
       initSocketListeners(currentContext);
       // Navigate to WaitingLobby, where timer and opponent joined listener will handle redirection
       if (!currentContext.mounted) return; // Guard against context across async gap
-      Navigator.pushNamed(currentContext, Constants.waitingLobby);
+      Navigator.pushNamed(currentContext, Constants.waitingLobby); // Changed to Constants.waitingLobby
     } catch (e) {
       if (!context.mounted) return; // Guard against context across async gap
       showSnackBar(context: context, content: 'Failed to create game: $e');
@@ -526,7 +503,7 @@ class GameProvider extends ChangeNotifier {
       
       // Navigate directly to game screen
       if (!currentContext.mounted) return; // Guard against context across async gap
-      Navigator.pushNamedAndRemoveUntil(currentContext, Constants.gameScreen, (route) => false,);
+      Navigator.pushNamedAndRemoveUntil(currentContext, Constants.gameScreen, (route) => false,); // Changed to Constants.gameScreen
     } catch (e) {
       if (!context.mounted) return; // Guard against context across async gap
       showSnackBar(context: context, content: 'Failed to create computer game: $e');
@@ -605,7 +582,7 @@ class GameProvider extends ChangeNotifier {
       if (!currentContext.mounted) return; // Guard against context across async gap
       Navigator.pushNamedAndRemoveUntil(
         context,
-        Constants.gameScreen,
+        Constants.gameScreen, // Changed to Constants.gameScreen
         (route) => false,
       );
       notifyListeners();
@@ -647,21 +624,13 @@ class GameProvider extends ChangeNotifier {
         onSuccess();
         final currentContext = context;
         if (!currentContext.mounted) return; // Guard against context across async gap
-        Navigator.pushNamedAndRemoveUntil(currentContext, Constants.gameScreen, (route) => false,);
+        Navigator.pushNamedAndRemoveUntil(currentContext, Constants.gameScreen, (route) => false,); // Changed to Constants.gameScreen
       }
     } catch (e) {
       onFail(e.toString());
     }
   }
 
-  // void startWhitesTime({
-  //   required BuildContext context,
-  //   required Function onNewGame,
-  // }) {
-  //   _whitesStopwatch = Stopwatch()..start();
-  //   _blacksStopwatch?.stop();
-  //   _updateTimer(context, onNewGame, isWhite: true);
-  // }
  void startWhitesTime({
     required BuildContext context,
     required Function onNewGame,
@@ -681,19 +650,11 @@ class GameProvider extends ChangeNotifier {
             timeOut: true,
             userWon: !_isHumanWhite,
             onNewGame: onNewGame,
-            reason: GameOverReason.TIMEOUT,
+            reason: GameOverReason.timeout,
           );
         }
       });
     }
-  // void startBlacksTime({
-  //   required BuildContext context,
-  //   required Function onNewGame,
-  // }) {
-  //   _blacksStopwatch = Stopwatch()..start();
-  //   _whitesStopwatch?.stop();
-  //   _updateTimer(context, onNewGame, isWhite: false);
-  // }
  void startBlacksTime({
     required BuildContext context,
     required Function onNewGame,
@@ -713,14 +674,12 @@ class GameProvider extends ChangeNotifier {
             timeOut: true,
             userWon: _isHumanWhite,
             onNewGame: onNewGame,
-            reason: GameOverReason.TIMEOUT,
+            reason: GameOverReason.timeout,
           );
         }
       });
     }
 
-  // void pauseWhitesTimer() => _whitesStopwatch?.stop();
-  // void pauseBlacksTimer() => _blacksStopwatch?.stop();
   void pauseWhitesTimer() {
     _whitesTimer?.cancel();
     notifyListeners();
@@ -737,17 +696,17 @@ class GameProvider extends ChangeNotifier {
 }) {
   if (!_vsComputer) return; // Return early for multiplayer games
   if (_game.gameOver) {
-    String reason = GameOverReason.DRAW;
+    String reason = GameOverReason.draw;
     bool userWon = false;
     if (_game.checkmate) {
-      reason = GameOverReason.CHECKMATE;
+      reason = GameOverReason.checkmate;
       userWon = _vsComputer
           ? (_isHumanWhite && _game.winner == Squares.white) ||
             (!_isHumanWhite && _game.winner == Squares.black)
           : (_isHumanWhite && _game.winner == Squares.white) ||
             (!_isHumanWhite && _game.winner == Squares.black);
     } else if (_game.stalemate || _game.insufficientMaterial) {
-      reason = GameOverReason.DRAW;
+      reason = GameOverReason.draw;
     }
     _isPlaying = false;
     if (!context.mounted) return; // Guard against context across async gap
@@ -787,11 +746,11 @@ void gameOverDialog({
         tempWhitesScore += 1.0;
       }
     }
-  } else if (reason == GameOverReason.DRAW) {
+  } else if (reason == GameOverReason.draw) {
     resultsToShow = 'Draw';
     tempWhitesScore += 0.5;
     tempBlacksScore += 0.5;
-  } else if (reason == GameOverReason.RESIGN) {
+  } else if (reason == GameOverReason.resign) {
     resultsToShow = userWon ? 'Opponent resigned' : 'You resigned';
     if (userWon) {
       if (_isHumanWhite) {
@@ -806,7 +765,7 @@ void gameOverDialog({
         tempWhitesScore += 1.0;
       }
     }
-  } else if (reason == GameOverReason.CHECKMATE) {
+  } else if (reason == GameOverReason.checkmate) {
     resultsToShow = userWon ? 'You won by checkmate' : 'Opponent won by checkmate';
     if (userWon) {
       if (_isHumanWhite) {
@@ -843,7 +802,7 @@ void gameOverDialog({
             if (!context.mounted) return; // Guard against context across async gap
             Navigator.pushNamedAndRemoveUntil(
               context,
-              Constants.homeScreen,
+              Constants.homeScreen, // Changed to Constants.homeScreen
               (route) => false,
             );
           },
@@ -867,7 +826,7 @@ void gameOverDialog({
   notifyListeners();
 }
   void startWaitingTimer({required BuildContext context}) {
-    int secondsLeft = WAITING_LOBBY_TIMEOUT_SECONDS;
+    int secondsLeft = waitingLobbyTimeoutSeconds; // Updated constant
     _waitingTimer?.cancel();
     _waitingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       secondsLeft--;
@@ -878,7 +837,7 @@ void gameOverDialog({
         if (!context.mounted) return; // Guard against context across async gap
         Navigator.pushNamedAndRemoveUntil(
           context,
-          Constants.homeScreen,
+          Constants.homeScreen, // Changed to Constants.homeScreen
           (route) => false,
         );
         if (!context.mounted) return; // Guard against context across async gap
@@ -886,6 +845,7 @@ void gameOverDialog({
           context: context,
           content: 'No opponent found. Game cancelled.',
         );
+        
       }
     });
   }
@@ -956,60 +916,6 @@ void gameOverDialog({
     ApiService.disposeSocket(); // Dispose socket when PvP fields are reset
   }
   
-  // Removed polling method to check if opponent joined
-  // Future<void> checkOpponentJoined(BuildContext context) async {
-  //   if (_gameId.isEmpty || _isPlaying) return; // Only check if in waiting state
-  //
-  //   final authProvider = context.read<AuthProvider>();
-  //   final token = authProvider.token;
-  //   if (token == null) {
-  //     print('checkOpponentJoined: No token available.');
-  //     return;
-  //   }
-  //
-  //   try {
-  //     final gameStatus = await ApiService.getGameStatus(token: token, gameId: _gameId);
-  //     if (gameStatus['opponentId'] != null && gameStatus['isPlaying'] == true) {
-  //       print('checkOpponentJoined: Opponent found via polling! Game status: $gameStatus');
-  //       _opponentId = gameStatus['opponentId'];
-  //       _opponentName = gameStatus['opponentName'] ?? ''; // Assume backend provides opponentName
-  //       _opponentImage = gameStatus['opponentImage'] ?? ''; // Assume backend provides opponentImage
-  //       _opponentRating = gameStatus['opponentRating'] ?? 1200;
-  //       _whitesTime = Duration(seconds: gameStatus['whiteTime']);
-  //       _blacksTime = Duration(seconds: gameStatus['blackTime']);
-  //       _isPlaying = true;
-  //
-  //       // The creator is always white
-  //       _isHumanWhite = true;
-  //       _player = Squares.white;
-  //
-  //       _game = bishop.Game(variant: bishop.Variant.standard());
-  //       _state = SquaresState(
-  //         board: _game.squaresState(_player).board,
-  //         player: _player,
-  //         state: PlayState.ourTurn,
-  //         size: BoardSize(8, 8),
-  //         moves: _game.generateLegalMoves().map((m) => _bishopMoveToSquaresMove(m)).toList(),
-  //       );
-  //
-  //       _waitingTimer?.cancel(); // Cancel the waiting timer now that opponent is found
-  //
-  //       if (context.mounted) {
-  //         Navigator.pushNamedAndRemoveUntil(
-  //           context,
-  //           Constants.gameScreen,
-  //           (route) => false,
-  //         );
-  //       }
-  //       notifyListeners();
-  //     } else {
-  //       print('checkOpponentJoined: Opponent not yet found.');
-  //     }
-  //   } catch (e) {
-  //     print('checkOpponentJoined error: $e');
-  //   }
-  // }
-  
   void offerDraw(BuildContext context) {
     if (_vsComputer) {
       if (!context.mounted) return; // Guard against context across async gap
@@ -1030,7 +936,7 @@ void gameOverDialog({
       timeOut: false,
       userWon: false,
       onNewGame: () {},
-      reason: GameOverReason.DRAW,
+      reason: GameOverReason.draw,
     );
     _isPlaying = false;
     notifyListeners();
@@ -1038,7 +944,7 @@ void gameOverDialog({
 
   void declineDraw() {
     ApiService.socket?.emit('decline_draw', {'gameId': _gameId});
-    _drawOffered = false;
+    _rematchOffered = false;
     notifyListeners();
   }
 
@@ -1047,7 +953,7 @@ void gameOverDialog({
     if (_vsComputer) {
       resetGame(newGame: true, context: context);
       if (!context.mounted) return; // Guard against context across async gap
-      Navigator.pushReplacementNamed(context, Constants.gameScreen);
+      Navigator.pushReplacementNamed(context, Constants.gameScreen); // Changed to Constants.gameScreen
     } else {
       ApiService.socket?.emit('rematch', {
         'gameId': _gameId,
@@ -1121,7 +1027,7 @@ void gameOverDialog({
       if (!currentContext.mounted) return; // Guard against context across async gap
       Navigator.pushNamedAndRemoveUntil(
         currentContext,
-        Constants.gameScreen,
+        Constants.gameScreen, // Changed to Constants.gameScreen
         (route) => false,
       );
       notifyListeners();
@@ -1194,16 +1100,16 @@ void gameOverDialog({
       }
       final currentContext = context;
       if (!currentContext.mounted) return; // Guard against context across async gap
-      gameOverDialog(
-        context: currentContext,
-        timeOut: reason == GameOverReason.TIMEOUT,
-        userWon: userWon,
-        onNewGame: () {},
-        reason: reason,
-      );
-      _isPlaying = false;
-      notifyListeners();
-    });
+    gameOverDialog(
+      context: currentContext,
+      timeOut: reason == GameOverReason.timeout,
+      userWon: userWon,
+      onNewGame: () {},
+      reason: reason,
+    );
+    _isPlaying = false;
+    notifyListeners();
+  });
 
     ApiService.socket?.on('draw_offered', (data) {
       _drawOfferedByOpponent = true;
@@ -1220,7 +1126,7 @@ void gameOverDialog({
         timeOut: false,
         userWon: false,
         onNewGame: () {},
-        reason: GameOverReason.DRAW,
+        reason: GameOverReason.draw,
       );
       _isPlaying = false;
       notifyListeners();
@@ -1234,7 +1140,7 @@ void gameOverDialog({
       resetGame(newGame: true, context: context);
       final currentContext = context;
       if (!currentContext.mounted) return; // Guard against context across async gap
-      Navigator.pushReplacementNamed(currentContext, Constants.gameScreen);
+      Navigator.pushReplacementNamed(currentContext, Constants.gameScreen); // Changed to Constants.gameScreen
       notifyListeners();
     });
 
@@ -1248,7 +1154,7 @@ void gameOverDialog({
         if (!currentContext.mounted) return; // Guard against context across async gap
         Navigator.pushNamedAndRemoveUntil(
           currentContext,
-          Constants.homeScreen,
+          Constants.homeScreen, // Changed to Constants.homeScreen
           (route) => false,
         );
         if (!currentContext.mounted) return; // Guard against context across async gap
@@ -1273,7 +1179,7 @@ void gameOverDialog({
         if (!currentContext.mounted) return; // Guard against context across async gap
         Navigator.pushNamedAndRemoveUntil(
           currentContext,
-          Constants.homeScreen,
+          Constants.homeScreen, // Changed to Constants.homeScreen
           (route) => false,
         );
         if (!currentContext.mounted) return; // Guard against context across async gap

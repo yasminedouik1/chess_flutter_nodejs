@@ -12,8 +12,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController emailController = TextEditingController();
+  // final TextEditingController emailController = TextEditingController(); // Removed this line
+  final TextEditingController usernameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _obscureText = true;
   bool isLoading = false;
 
@@ -58,119 +60,130 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: Center(
           child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Image.asset(
-                    'assets/images/chessboard.png',
-                    width: 200, // set desired width
-                    height: 200, // set desired height
-                    fit: BoxFit.contain, // scale image inside these dimensions
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Welcome Back!',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+            child: Form( // Added this line
+              key: _formKey, // Added this line
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'assets/images/chessboard.png',
+                      width: 200, // set desired width
+                      height: 200, // set desired height
+                      fit: BoxFit.contain, // scale image inside these dimensions
                     ),
-                  ),
-                  const SizedBox(height: 40),
-                  _buildTextField(
-                    controller: emailController,
-                    hintText: 'Email',
-                    icon: Icons.email,
-                    keyboardType: TextInputType.emailAddress,
-                  ),
-                  const SizedBox(height: 20),
-                  _buildTextField(
-                    controller: passwordController,
-                    hintText: 'Password',
-                    icon: Icons.lock,
-                    obscureText: _obscureText,
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscureText ? Icons.visibility_off : Icons.visibility,
-                        color: Colors.white70,
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Welcome Back!',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
-                      onPressed: () =>
-                          setState(() => _obscureText = !_obscureText),
                     ),
-                  ),
-                  const SizedBox(height: 30),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF26A69A),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: () async {
-                        setState(() => isLoading = true); // Set loading state
-                        final auth = Provider.of<AuthProvider>(
-                          context,
-                          listen: false,
-                        );
-                        try {
-                          await auth.login(
-                            email: emailController.text,
-                            password: passwordController.text,
-                          );
-                          if (auth.isLoggedIn) {
-                            if (!context.mounted) return; // Guard against context across async gap
-                            Navigator.pushReplacementNamed(
-                              context,
-                              Constants.homeScreen,
-                            );
-                          }
-                        } catch (e) {
-                          if (!context.mounted) return; // Guard against context across async gap
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-                          );
-                        } finally {
-                          setState(() => isLoading = false); // Reset loading state
+                    const SizedBox(height: 40),
+                    // Removed email text field, re-added username text field
+                    _buildTextField(
+                      controller: usernameController,
+                      hintText: 'Username',
+                      icon: Icons.person,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your username';
                         }
+                        return null;
                       },
-
-                      child: isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text(
-                              'Login',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        'Don\'t have an account?',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pushNamed(
-                          context,
-                          Constants.signupScreen,
+                    const SizedBox(height: 20),
+                    _buildTextField(
+                      controller: passwordController,
+                      hintText: 'Password',
+                      icon: Icons.lock,
+                      obscureText: _obscureText,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureText ? Icons.visibility_off : Icons.visibility,
+                          color: Colors.white70,
                         ),
-                        child: const Text(
-                          'Sign Up',
-                          style: TextStyle(color: Color(0xFF26A69A)),
-                        ),
+                        onPressed: () =>
+                            setState(() => _obscureText = !_obscureText),
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 30),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF26A69A),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () async {
+                          if (_formKey.currentState?.validate() ?? false) { // Added this line for validation
+                            setState(() => isLoading = true); // Set loading state
+                            final auth = Provider.of<AuthProvider>(
+                              context,
+                              listen: false,
+                            );
+                            try {
+                              await auth.login(
+                                username: usernameController.text, // Changed to username
+                                password: passwordController.text,
+                              );
+                              if (auth.isLoggedIn) {
+                                if (!context.mounted) return; // Guard against context across async gap
+                                Navigator.pushReplacementNamed(
+                                  context,
+                                  Constants.homeScreen,
+                                );
+                              }
+                            } catch (e) {
+                              if (!context.mounted) return; // Guard against context across async gap
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                              );
+                            } finally {
+                              setState(() => isLoading = false); // Reset loading state
+                            }
+                          }
+                        },
+
+                        child: isLoading
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text(
+                                'Login',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Don\'t have an account?',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pushNamed(
+                            context,
+                            Constants.signupScreen,
+                          ),
+                          child: const Text(
+                            'Sign Up',
+                            style: TextStyle(color: Color(0xFF26A69A)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -186,8 +199,9 @@ class _LoginScreenState extends State<LoginScreen> {
     bool obscureText = false,
     Widget? suffixIcon,
     TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
   }) {
-    return TextField(
+    return TextFormField(
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
@@ -204,6 +218,7 @@ class _LoginScreenState extends State<LoginScreen> {
           borderSide: BorderSide.none,
         ),
       ),
+      validator: validator,
     );
   }
 }

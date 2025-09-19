@@ -4,6 +4,7 @@ import 'package:flutter_chess/main_screens/waiting_lobby.dart';
 import 'package:flutter_chess/providers/auth_provider.dart';
 import 'package:flutter_chess/providers/game_provider.dart';
 import 'package:flutter_chess/services/assets_manager.dart';
+import 'package:flutter_chess/app_routes.dart'; // Added missing import
 import 'package:provider/provider.dart';
 import 'package:squares/squares.dart';
 
@@ -116,7 +117,7 @@ class GameScreen extends HookWidget {
           gameProvider.pauseBlacksTimer();
           Navigator.pushNamedAndRemoveUntil(
             context,
-            '/homeScreen',
+            Constants.homeScreen, // Changed to Constants.homeScreen
             (route) => false,
           );
         } else {
@@ -124,7 +125,7 @@ class GameScreen extends HookWidget {
           if (context.mounted) {
             Navigator.pushNamedAndRemoveUntil(
               context,
-              '/homeScreen',
+              Constants.homeScreen, // Changed to Constants.homeScreen
               (route) => false,
             );
           }
@@ -283,9 +284,9 @@ class GameScreen extends HookWidget {
           ListTile(
             leading: CircleAvatar(
               radius: 25,
-              backgroundImage: gameProvider.vsComputer 
+              backgroundImage: (gameProvider.vsComputer || gameProvider.opponentImage.isEmpty)
                   ? const AssetImage('assets/images/computer.png')
-                  : NetworkImage(gameProvider.opponentImage),
+                  : NetworkImage(gameProvider.opponentImage) as ImageProvider,
               backgroundColor: const Color(0xFF3A3A6A),
             ),
             title: Text(
@@ -339,9 +340,9 @@ class GameScreen extends HookWidget {
           ListTile(
             leading: CircleAvatar(
               radius: 25,
-              backgroundImage: NetworkImage(
-                user?.image ?? AssetsManager.userIcon,
-              ),
+              backgroundImage: (user?.image == null || user!.image.isEmpty)
+                  ? AssetImage(AssetsManager.userIcon)
+                  : NetworkImage(user.image) as ImageProvider,
               backgroundColor: const Color(0xFF3A3A6A),
             ),
             title: Text(

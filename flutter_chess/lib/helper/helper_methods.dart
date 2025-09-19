@@ -35,13 +35,13 @@ void gameOverDialog({
     barrierDismissible: false,
     builder: (context) => AlertDialog(
       title: Text(
-        timeOut ? 'Time Out' : reason == GameOverReason.DRAW ? 'Draw' : userWon ? 'You Won!' : 'You Lost!',
+        timeOut ? 'Time Out' : reason == GameOverReason.draw ? 'Draw' : userWon ? 'You Won!' : 'You Lost!',
         textAlign: TextAlign.center,
       ),
       content: Text(
         timeOut
             ? 'Game ended due to time out.'
-            : reason == GameOverReason.DRAW
+            : reason == GameOverReason.draw
                 ? 'The game ended in a draw.'
                 : userWon
                     ? 'Congratulations, you won by $reason!'
